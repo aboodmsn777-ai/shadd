@@ -543,15 +543,16 @@ function frame(now){
 }
 
 // ---------- camera ----------
-let camTilt=0.55, camTarget=null, viewMode=0;
-const VIEWS=[0.55,0.06,0.95];
+const PORTRAIT=innerWidth/innerHeight<0.8;
+let camTilt=PORTRAIT?0.3:0.55, camTarget=null, viewMode=0;
+const VIEWS=[PORTRAIT?0.3:0.55,0.06,0.95];
 function applyCamera(){
   const w=stage.clientWidth||innerWidth, h=stage.clientHeight||innerHeight, asp=w/h;
   camera.aspect=asp;
-  const rad=(B?B.R:4)*S+1.0;
+  const rad=(B?B.R:4)*S+(asp<0.8?0.92:1.0);
   const vf=THREE.MathUtils.degToRad(camera.fov), hf=2*Math.atan(Math.tan(vf/2)*asp);
   const hudPad = asp<0.8 ? 1.35 : 1.18;
-  const d=Math.max(rad*hudPad/Math.tan(vf/2)*Math.cos(camTilt*0.5), rad*1.08/Math.tan(hf/2));
+  const d=Math.max(rad*hudPad/Math.tan(vf/2)*Math.cos(camTilt*0.5), rad*(asp<0.8?1.02:1.08)/Math.tan(hf/2));
   camera.position.set(0, d*Math.cos(camTilt), d*Math.sin(camTilt));
   scene.fog.near=d*1.25; scene.fog.far=d*3; // fog only on the far table, never on the board
   camera.lookAt(0,0,0.15*Math.sin(camTilt));
@@ -689,6 +690,16 @@ function pointToWorld(ev){
   ndc.set(((ev.clientX-r.left)/r.width)*2-1, -((ev.clientY-r.top)/r.height)*2+1);
   ray.setFromCamera(ndc,camera); return ray.ray.intersectPlane(ground,hit) ? hit : null;
 }
+const _v=new THREE.Vector3();
+function pegsOnScreen(){ const r=renderer.domElement.getBoundingClientRect(); return pegPos.map(q=>{ _v.copy(q).setY(0.15).project(camera); return {x:r.left+(_v.x+1)/2*r.width, y:r.top+(1-_v.y)/2*r.height}; }); }
+// Pick the peg nearest the finger as the player sees it (perspective squashes rows on phones).
+function pickPeg(ev,frac){
+  const pts=pegsOnScreen(); let sp=0,n=0;
+  B.edges.forEach(e=>{ if(n<40){ sp+=Math.hypot(pts[e.a].x-pts[e.b].x,pts[e.a].y-pts[e.b].y); n++; } });
+  const lim=Math.max(14,(sp/n)*frac); let best=-1,bd=lim*lim;
+  pts.forEach((q,i)=>{ const d=(q.x-ev.clientX)**2+(q.y-ev.clientY)**2; if(d<bd){bd=d;best=i;} });
+  return best;
+}
 function nearestPeg(p,maxD){ let best=-1,bd=maxD*maxD; pegPos.forEach((q,i)=>{ const d=(q.x-p.x)**2+(q.z-p.z)**2; if(d<bd){bd=d;best=i;} }); return best; }
 // Players build the line themselves: tap (or drag across) 4 pegs in a straight row.
 let path=[], selPool=[];
@@ -732,22 +743,21 @@ function setPreview(a,p){
 const el=renderer.domElement;
 el.addEventListener('pointerdown',ev=>{
   sfx.unlock(); if(!canAct()) return;
-  const p=pointToWorld(ev); if(!p) return;
-  const i=nearestPeg(p,0.45*S);
+  const i=pickPeg(ev,0.55);
   if(i<0){ clearSel(); return; }
   tapPeg(i);
   if(path.length){ dragging=true; try{ el.setPointerCapture(ev.pointerId); }catch(e){} }
 });
 el.addEventListener('pointermove',ev=>{
   if(!dragging||!path.length||!canAct()) return; const p=pointToWorld(ev); if(!p) return;
-  const i=nearestPeg(p,0.32*S);
+  const i=pickPeg(ev,0.35);
   if(i>=0 && !path.includes(i) && candidates().includes(i)){ path.push(i); sfx.pick(); if(path.length===4){ dragging=false; return finishPath(); } }
   renderSel(p.clone());
 });
 el.addEventListener('pointerup',ev=>{
   if(!dragging) return; dragging=false;
   if(!canAct()||!path.length) return;
-  const p=pointToWorld(ev), i=p?nearestPeg(p,0.45*S):-1;
+  const i=pickPeg(ev,0.55);
   if(i>=0 && path.length===1 && i!==path[0]){ const m=B.moveBetween(path[0],i); if(m>=0&&Engine.legal(st,m)){ clearSel(); return submit(m); } }
   renderSel(); // keep the chosen pegs so the player can keep tapping
 });
