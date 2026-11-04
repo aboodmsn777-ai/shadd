@@ -228,7 +228,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
     <details>
       <summary>طريقة اللعب</summary>
       <ul class="rules">
-        <li><b>اسحب</b> من وتد إلى وتد يبعد ثلاث خطوات على خط مستقيم، أو المس الوتدين واحدًا بعد الآخر.</li>
+        <li><b>المس ٤ أوتاد</b> متجاورة على خط مستقيم بأي ترتيب، أو اسحب إصبعك عليها. المس الوتد مرة ثانية لإلغاء اختياره.</li>
         <li>كل شريط يغطي <b>٣ أضلاع</b>، ويجب أن يغطي ضلعًا جديدًا واحدًا على الأقل.</li>
         <li>إذا اكتملت أضلاع مثلث صغير بشريطك، <b>تضع قطعتك فيه</b> وتكسب نقطة.</li>
         <li>تنتهي المباراة حين لا يبقى ضلع مكشوف. الأكثر مثلثات يفوز.</li>
@@ -456,7 +456,7 @@ function applyLook(){
 function makeBoard(R){
   if(boardGroup){ scene.remove(boardGroup); boardGroup.traverse(o=>{ if(o.geometry&&o.geometry!==pieceGeo&&o.geometry!==ringGeo) o.geometry.dispose(); }); }
   boardGroup=new THREE.Group(); scene.add(boardGroup);
-  bandMeshes=[]; ringPool=[]; hintMesh=null; lastBand=null; preview=null;
+  bandMeshes=[]; ringPool=[]; selPool=[]; path=[]; hintMesh=null; lastBand=null; preview=null;
   boardRad=R*S+0.75;
   const shape=new THREE.Shape();
   for(let i=0;i<6;i++){ const a=i*Math.PI/3, x=Math.cos(a)*boardRad, y=Math.sin(a)*boardRad; i?shape.lineTo(x,y):shape.moveTo(x,y); }
@@ -599,9 +599,9 @@ function localMatch(){
 }
 
 // ---------- game flow ----------
-let busy=false, aiTimer=null, sel=-1, dragging=false, pendingTimer=null;
+let busy=false, aiTimer=null, dragging=false, pendingTimer=null;
 function startGame(m, history){
-  clearTimeout(aiTimer); clearTimeout(pendingTimer); busy=false; sel=-1; gameId++;
+  clearTimeout(aiTimer); clearTimeout(pendingTimer); busy=false; path=[]; selPool=[]; gameId++;
   match=m;
   B=Engine.build(m.R,3);
   st=Engine.newState(B,m.n,m.extra);
@@ -636,7 +636,7 @@ function play(m){
   addBand(m,r.who,true);
   r.got.forEach((t,i)=>addPiece(t,r.who,180+i*140,true));
   if(r.got.length) toast('+'+r.got.length, CSSC(r.who));
-  sel=-1; rings([],0xffffff); setPreview(null);
+  clearSel();
   if(match.online && Net.role==='host') Net.broadcast({t:'move',m,k:st.history.length});
   busy=true; const gid=gameId;
   setTimeout(()=>{ if(gid!==gameId) return; busy=false; nextTurn(); }, r.got.length? 520+r.got.length*140 : 380);
@@ -645,7 +645,7 @@ function submit(m){
   if(match.online && Net.role==='guest'){
     if(!Net.hostOpen()){ note('غير متصل بالمضيف'); return; }
     Net.send({t:'move',m,k:st.history.length+1});
-    busy=true; sel=-1; rings([],0xffffff); setPreview(null); drawGhost(m,COL(st.cur));
+    busy=true; clearSel(); drawGhost(m,COL(st.cur));
     pendingTimer=setTimeout(()=>{ busy=false; clearHint(); Net.send({t:'sync'}); }, 6000);
   } else play(m);
 }
@@ -675,7 +675,8 @@ function renderHud(){
   else if(s.away) who=esc(name(p))+' غائب · الكمبيوتر يلعب عنه';
   else if(match.online) who='بانتظار '+esc(name(p))+'…';
   else who='دور '+esc(name(p));
-  $('turn').innerHTML= st.over ? who : `<span style="color:${CSSC(p)}">${who}</span><small>${left} مثلث متبقٍ · ${Engine.legalMoves(st).length} حركة ممكنة</small>`;
+  const tip = isMine(p) ? 'المس ٤ أوتاد على خط واحد' : `${left} مثلث متبقٍ · ${Engine.legalMoves(st).length} حركة ممكنة`;
+  $('turn').innerHTML= st.over ? who : `<span style="color:${CSSC(p)}">${who}</span><small>${tip}</small>`;
 }
 let toastT=null, noteT=null;
 function toast(txt,color){ const t=$('toast'); t.textContent=txt; t.style.color=color; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),700); }
@@ -689,39 +690,68 @@ function pointToWorld(ev){
   ray.setFromCamera(ndc,camera); return ray.ray.intersectPlane(ground,hit) ? hit : null;
 }
 function nearestPeg(p,maxD){ let best=-1,bd=maxD*maxD; pegPos.forEach((q,i)=>{ const d=(q.x-p.x)**2+(q.z-p.z)**2; if(d<bd){bd=d;best=i;} }); return best; }
-function targetsFrom(a){ const out=[]; B.moves.forEach((mv,m)=>{ if(!Engine.legal(st,m)) return; if(mv.a===a) out.push(mv.b); else if(mv.b===a) out.push(mv.a); }); return out; }
+// Players build the line themselves: tap (or drag across) 4 pegs in a straight row.
+let path=[], selPool=[];
 function canAct(){ return !!(st && match && !st.over && !busy && isMine(st.cur) && $('menu').hidden && $('end').hidden); }
-function selectPeg(a){
-  const t=targetsFrom(a);
-  if(!t.length){ sel=-1; rings([],0xffffff); return false; }
-  sel=a; sfx.pick(); rings(t, COL(st.cur)); return true;
+function movesWith(set){ const out=[]; B.moves.forEach((mv,m)=>{ if(Engine.legal(st,m) && set.every(q=>mv.pegs.includes(q))) out.push(m); }); return out; }
+function candidates(){
+  if(!path.length) return [];
+  const c=new Set();
+  movesWith(path).forEach(m=>{ const pg=B.moves[m].pegs, idx=path.map(q=>pg.indexOf(q)), lo=Math.min(...idx), hi=Math.max(...idx);
+    if(hi-lo+1!==path.length) return; if(lo>0) c.add(pg[lo-1]); if(hi<pg.length-1) c.add(pg[hi+1]); });
+  return [...c];
+}
+function ends(){ let best=[path[0],path[0]],bd=-1; path.forEach(a=>path.forEach(b=>{ const d=pegPos[a].distanceTo(pegPos[b]); if(d>bd){bd=d;best=[a,b];} })); return best; }
+const selGeo=new THREE.CylinderGeometry(0.2,0.2,0.04,24);
+function renderSel(finger){
+  if(!boardGroup) return;
+  rings(path.length?candidates():[], 0xffffff);
+  selPool.forEach(m=>m.visible=false);
+  path.forEach((q,k)=>{ let m=selPool[k]; if(!m){ m=new THREE.Mesh(selGeo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.85})); boardGroup.add(m); selPool.push(m); }
+    m.material.color.set(COL(st.cur)); m.position.copy(pegPos[q]).setY(0.02); m.visible=true; });
+  if(finger && path.length){ const [a,b]=ends(), anchor=pegPos[a].distanceTo(finger)>pegPos[b].distanceTo(finger)?a:b; setPreview(anchor,finger); }
+  else if(path.length>=2){ const [a,b]=ends(); setPreview(a,pegPos[b]); }
+  else setPreview(null);
+}
+function clearSel(){ path=[]; selPool.forEach(m=>m.visible=false); rings([],0xffffff); setPreview(null); }
+function finishPath(){ const [a,b]=ends(), m=B.moveBetween(a,b); clearSel(); if(m>=0&&Engine.legal(st,m)) submit(m); }
+function tapPeg(i){
+  if(path.includes(i)){ if(path[path.length-1]===i) path.pop(); else path=[]; renderSel(); return; }
+  if(path.length && candidates().includes(i)){ path.push(i); sfx.pick(); if(path.length===4) return finishPath(); renderSel(); return; }
+  if(path.length===1){ const m=B.moveBetween(path[0],i); if(m>=0&&Engine.legal(st,m)){ clearSel(); return submit(m); } }
+  if(movesWith([i]).length){ path=[i]; sfx.pick(); } else { path=[]; note('ما فيه خط ممكن من هذا الوتد'); }
+  renderSel();
 }
 function setPreview(a,p){
   if(preview){ boardGroup.remove(preview); preview.geometry.dispose(); preview=null; }
   if(a==null||!p) return;
   const A=pegPos[a], len=Math.hypot(p.x-A.x,p.z-A.z); if(len<0.15) return;
-  preview=new THREE.Mesh(bandGeometry(len,0.018), new THREE.MeshBasicMaterial({color:COL(st.cur),transparent:true,opacity:0.7}));
+  preview=new THREE.Mesh(bandGeometry(len,0.022), new THREE.MeshBasicMaterial({color:COL(st.cur),transparent:true,opacity:0.75}));
   preview.position.set(A.x,0.1,A.z); preview.rotation.y=-Math.atan2(p.z-A.z,p.x-A.x); boardGroup.add(preview);
 }
 const el=renderer.domElement;
 el.addEventListener('pointerdown',ev=>{
   sfx.unlock(); if(!canAct()) return;
   const p=pointToWorld(ev); if(!p) return;
-  const i=nearestPeg(p,0.45*S); if(i<0){ sel=-1; rings([],0xffffff); return; }
-  if(sel>=0 && i!==sel){ const m=B.moveBetween(sel,i); if(m>=0 && Engine.legal(st,m)){ submit(m); return; } }
-  if(selectPeg(i)){ dragging=true; try{ el.setPointerCapture(ev.pointerId); }catch(e){} }
+  const i=nearestPeg(p,0.45*S);
+  if(i<0){ clearSel(); return; }
+  tapPeg(i);
+  if(path.length){ dragging=true; try{ el.setPointerCapture(ev.pointerId); }catch(e){} }
 });
 el.addEventListener('pointermove',ev=>{
-  if(!dragging||sel<0) return; const p=pointToWorld(ev); if(!p) return;
-  const i=nearestPeg(p,0.4*S), m=i>=0&&i!==sel?B.moveBetween(sel,i):-1;
-  setPreview(sel, m>=0&&Engine.legal(st,m) ? pegPos[i] : p);
+  if(!dragging||!path.length||!canAct()) return; const p=pointToWorld(ev); if(!p) return;
+  const i=nearestPeg(p,0.32*S);
+  if(i>=0 && !path.includes(i) && candidates().includes(i)){ path.push(i); sfx.pick(); if(path.length===4){ dragging=false; return finishPath(); } }
+  renderSel(p.clone());
 });
 el.addEventListener('pointerup',ev=>{
-  if(!dragging) return; dragging=false; const p=pointToWorld(ev); setPreview(null);
-  if(!p||sel<0||!canAct()) return; const i=nearestPeg(p,0.45*S);
-  if(i>=0 && i!==sel){ const m=B.moveBetween(sel,i); if(m>=0 && Engine.legal(st,m)) submit(m); }
+  if(!dragging) return; dragging=false;
+  if(!canAct()||!path.length) return;
+  const p=pointToWorld(ev), i=p?nearestPeg(p,0.45*S):-1;
+  if(i>=0 && path.length===1 && i!==path[0]){ const m=B.moveBetween(path[0],i); if(m>=0&&Engine.legal(st,m)){ clearSel(); return submit(m); } }
+  renderSel(); // keep the chosen pegs so the player can keep tapping
 });
-el.addEventListener('pointercancel',()=>{ dragging=false; setPreview(null); });
+el.addEventListener('pointercancel',()=>{ dragging=false; renderSel(); });
 
 // ---------- hint / pending ghost ----------
 function clearHint(){ if(hintMesh){ boardGroup.remove(hintMesh); hintMesh.geometry.dispose(); hintMesh=null; } }
@@ -1045,7 +1075,7 @@ $('joinCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('bJoin').cli
 $('bLeave').onclick=()=>{ Net.leave(); menuMode='online'; renderMenu(); };
 $('bReconnect').onclick=()=>{ Net.retries=0; Net.reconnect(); };
 
-if(useBC) window.__shadd={ state:()=>st&&{cur:st.cur,over:st.over,history:st.history.slice(),scores:st.scores.slice()}, canAct, think:l=>Engine.think(st,l||'medium'), submit, net:()=>({role:Net.role,code:Net.code,room:Net.room}), seats:()=>match&&match.seats.map(s=>({name:s.name,kind:s.kind,color:s.color,away:s.away})) };
+if(useBC) window.__shadd={ pegXY:i=>{ const v=pegPos[i].clone().setY(0.15).project(camera), r=renderer.domElement.getBoundingClientRect(); return {x:r.left+(v.x+1)/2*r.width, y:r.top+(1-v.y)/2*r.height}; }, legalPegs:()=>{ const m=Engine.legalMoves(st)[0]; return B.moves[m].pegs; }, path:()=>path.slice(), state:()=>st&&{cur:st.cur,over:st.over,history:st.history.slice(),scores:st.scores.slice()}, canAct, think:l=>Engine.think(st,l||'medium'), submit, net:()=>({role:Net.role,code:Net.code,room:Net.room}), seats:()=>match&&match.seats.map(s=>({name:s.name,kind:s.kind,color:s.color,away:s.away})) };
 function readJoinHash(){
   const j=location.hash.match(/^#join-([A-Za-z0-9]{4})$/); if(!j) return false;
   menuMode='online'; $('joinCode').value=j[1].toUpperCase(); return true;
