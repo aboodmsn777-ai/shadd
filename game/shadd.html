@@ -1133,6 +1133,13 @@ function readJoinHash(){
   menuMode='online'; $('joinCode').value=j[1].toUpperCase(); return true;
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
+// ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
+const BUILD=10;
+try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
+  if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
+  if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
+  u.searchParams.set('v',j.v); if(!Net.role&&!(st&&!st.over)) location.replace(u.toString());
+}).catch(()=>{}); }catch(e){}
 // ---------- boot ----------
 function boot(data){
   if(data && data.cfg) cfg={...cfg,...data.cfg};
