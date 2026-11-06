@@ -153,13 +153,9 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
         <div class="lbl">حجم اللوح</div>
         <div class="seg" id="segR"><button data-v="3">صغير · ٥٤</button><button data-v="4">قياسي · ٩٦</button><button data-v="5">كبير · ١٥٠</button></div>
       </div>
-      <div class="toggle">
-        <div>دور إضافي عند الإغلاق<small>من يُغلق مثلثًا يلعب مرة أخرى</small></div>
-        <button class="sw-btn" id="tExtra" aria-pressed="false" aria-label="دور إضافي عند الإغلاق"></button>
-      </div>
-      <div class="toggle">
-        <div>مؤقت الدور ١٠ ثوانٍ<small>إذا خلص الوقت يروح الدور على اللاعب</small></div>
-        <button class="sw-btn" id="tTimer" aria-pressed="true" aria-label="مؤقت الدور"></button>
+      <div>
+        <div class="lbl">وقت كل دور (الافتراضي ١٥) · إذا خلص يروح الدور على اللاعب</div>
+        <div class="seg" id="segTimer"><button data-v="10">١٠ ث</button><button data-v="15">١٥ ث</button><button data-v="20">٢٠ ث</button></div>
       </div>
       <button class="primary" id="bStart">ابدأ اللعب</button>
       <button class="ghost" id="bResume" hidden>متابعة المباراة</button>
@@ -206,13 +202,9 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
             <div class="lbl">حجم اللوح</div>
             <div class="seg" id="segRoomR"><button data-v="3">صغير</button><button data-v="4">قياسي</button><button data-v="5">كبير</button></div>
           </div>
-          <div class="toggle">
-            <div>دور إضافي عند الإغلاق</div>
-            <button class="sw-btn" id="tRoomExtra" aria-pressed="false" aria-label="دور إضافي عند الإغلاق"></button>
-          </div>
-          <div class="toggle">
-            <div>مؤقت الدور ١٠ ثوانٍ</div>
-            <button class="sw-btn" id="tRoomTimer" aria-pressed="true" aria-label="مؤقت الدور"></button>
+          <div>
+            <div class="lbl">وقت كل دور (الافتراضي ١٥)</div>
+            <div class="seg" id="segRoomTimer"><button data-v="10">١٠ ث</button><button data-v="15">١٥ ث</button><button data-v="20">٢٠ ث</button></div>
           </div>
           <div class="toggle">
             <div>المقاعد الفارغة عند البدء<small>يلعبها الكمبيوتر</small></div>
@@ -394,7 +386,9 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const store={ get(k,d){ try{ const v=localStorage.getItem('shadd.'+k); return v==null?d:JSON.parse(v);}catch(e){return d;} }, set(k,v){ try{localStorage.setItem('shadd.'+k,JSON.stringify(v));}catch(e){} } };
 
 // ---------- preferences (per viewer) ----------
-let cfg={n:2,R:4,extra:false,timer:true,types:['human','medium','medium','medium'],colors:[0,1,2,3],...store.get('cfg',{})};
+let cfg={n:2,R:4,timer:15,types:['human','medium','medium','medium'],colors:[0,1,2,3],...store.get('cfg',{})};
+const TIMER_OPTS=[10,15,20], timerSecs=v=>TIMER_OPTS.includes(+v)?+v:15; // 15 s unless the player picks 10 or 20
+cfg.timer=timerSecs(cfg.timer); delete cfg.extra;
 if(!Array.isArray(cfg.colors)||cfg.colors.length<4) cfg.colors=[0,1,2,3];
 let look={board:'classic',bg:'light',...store.get('look',{})};
 if(!BOARDS[look.board]) look.board='classic'; // a board option that no longer exists
@@ -612,7 +606,7 @@ function localMatch(){
     const ai=AI_KINDS.includes(s.kind), same=seats.map((x,i)=>i).filter(i=>AI_KINDS.includes(seats[i].kind)===ai);
     s.name = same.length===1 ? (ai?'الكمبيوتر':'أنت') : (ai?'الكمبيوتر ':'اللاعب ')+(same.indexOf(p)+1);
   });
-  return {online:false,n:cfg.n,R:cfg.R,extra:cfg.extra,timer:cfg.timer!==false,seats};
+  return {online:false,n:cfg.n,R:cfg.R,timer:cfg.timer,seats};
 }
 
 // ---------- game flow ----------
@@ -621,7 +615,7 @@ function startGame(m, history){
   clearTimeout(aiTimer); clearTimeout(pendingTimer); busy=false; path=[]; selPool=[]; gameId++;
   match=m;
   B=Engine.build(m.R,3);
-  st=Engine.newState(B,m.n,m.extra);
+  st=Engine.newState(B,m.n,false); // closing a triangle never grants an extra turn
   pieceMats.forEach(x=>x.dispose());
   pieceMats=m.seats.map(s=>new THREE.MeshStandardMaterial({color:lin(PALETTE[s.color].hex),roughness:0.38,flatShading:true}));
   makeBoard(m.R);
@@ -633,23 +627,23 @@ function startGame(m, history){
   nextTurn();
 }
 // ---------- turn timer (humans only; host/local device decides when it runs out) ----------
-const TURN_MS=10000;
+const turnMs=()=>timerSecs(match&&match.timer)*1000;
 let turnClock=null, lastTick=-1;
 function startClock(){
   turnClock=null; $('clock').hidden=true;
   if(!match||!match.timer||!st||st.over) return;
   const p=st.cur, s=match.seats[p];
   if(isAI(p)||s.away) return;
-  turnClock={p,k:st.history.length,end:performance.now()+TURN_MS,gid:gameId}; lastTick=-1;
+  turnClock={p,k:st.history.length,ms:turnMs(),end:performance.now()+turnMs(),gid:gameId}; lastTick=-1;
 }
 function tickClock(now){
   const c=turnClock, el=$('clock');
   if(!c||!st||c.gid!==gameId||st.history.length!==c.k||st.cur!==c.p||st.over){ if(!el.hidden) el.hidden=true; return; }
   const paused=!match.online && !$('menu').hidden; // a local game pauses while the menu is open
-  if(paused){ c.end=now+(c.left??TURN_MS); return; }
+  if(paused){ c.end=now+(c.left??c.ms); return; }
   const left=Math.max(0,c.end-now); c.left=left;
   const sec=Math.ceil(left/1000);
-  el.hidden=false; el.style.setProperty('--f',(left/TURN_MS).toFixed(3)); el.style.setProperty('--c',CSSC(c.p));
+  el.hidden=false; el.style.setProperty('--f',(left/c.ms).toFixed(3)); el.style.setProperty('--c',CSSC(c.p));
   el.classList.toggle('low',sec<=3); if($('clockNum').textContent!==String(sec)) $('clockNum').textContent=sec;
   if(sec<=3 && sec>0 && sec!==lastTick && isMine(c.p)){ lastTick=sec; sfx.tick(); }
   if(left<=0 && authoritative()){ turnClock=null; timeUp(c.p); }
@@ -895,7 +889,7 @@ const Net={
     }
     if(!this.peer){ setStatus('تعذّر إنشاء الغرفة. تأكد من اتصالك بالإنترنت وحاول مرة ثانية.',true); return; }
     this.role='host'; this.myId=this.peer.id;
-    this.room={n:2,R:cfg.R,extra:cfg.extra,timer:cfg.timer!==false,ai:'medium',started:false,seats:[
+    this.room={n:2,R:cfg.R,timer:cfg.timer,ai:'medium',started:false,seats:[
       {kind:'human',owner:this.myId,name:myName(),color:me.color,host:true},
       {kind:'open',color:-1}]};
     this.peer.on('connection',c=>this.hostConn(c));
@@ -957,7 +951,7 @@ const Net={
       for(let i=R.seats.length-1;i>=0&&R.seats.length>n;i--) if(R.seats[i].kind==='open') R.seats.splice(i,1);
       R.n=n;
     }
-    ['R','extra','ai','timer'].forEach(k=>{ if(patch[k]!=null) R[k]=patch[k]; });
+    ['R','ai','timer'].forEach(k=>{ if(patch[k]!=null) R[k]=patch[k]; });
     this.broadcast({t:'lobby',room:this.pub()}); renderOnline();
   },
   startMatch(){
@@ -1033,7 +1027,7 @@ const Net={
 };
 addEventListener('pagehide',()=>{ try{ if(Net.role==='guest') Net.send({t:'bye'}); else if(Net.role==='host') Net.broadcast({t:'closed'}); }catch(e){} });
 
-function roomMatch(R){ return {online:true,n:R.seats.length,R:R.R,extra:R.extra,timer:R.timer!==false,seats:R.seats.map(s=>({kind:s.kind,name:s.name||'لاعب',color:Math.max(0,s.color),owner:s.owner,away:!!s.away,host:!!s.host}))}; }
+function roomMatch(R){ return {online:true,n:R.seats.length,R:R.R,timer:timerSecs(R.timer),seats:R.seats.map(s=>({kind:s.kind,name:s.name||'لاعب',color:Math.max(0,s.color),owner:s.owner,away:!!s.away,host:!!s.host}))}; }
 function cleanName(s){ return String(s||'').replace(/[<>]/g,'').trim().slice(0,14); }
 function myName(){ return cleanName(me.name)||'لاعب'; }
 function freeColor(pref,seatIdx){
@@ -1054,8 +1048,7 @@ function renderMenu(){
   pressSeg('segMode',menuMode);
   $('localSec').hidden=menuMode!=='local'; $('onlineSec').hidden=menuMode!=='online';
   pressSeg('segN',cfg.n); pressSeg('segR',cfg.R);
-  $('tExtra').setAttribute('aria-pressed',String(cfg.extra));
-  $('tTimer').setAttribute('aria-pressed',String(cfg.timer!==false));
+  pressSeg('segTimer',cfg.timer);
   $('bResume').hidden=!(st&&match&&!match.online&&!st.over);
   $('prows').innerHTML=[...Array(cfg.n).keys()].map(p=>{
     const taken=new Set(cfg.colors.slice(0,cfg.n).filter((c,i)=>i!==p));
@@ -1096,7 +1089,7 @@ function renderOnline(){
   const playing=!!(st&&match&&match.online&&!st.over);
   $('hostCtl').hidden=!host||playing;
   if(host){
-    pressSeg('segRoomN',R.n); pressSeg('segRoomR',R.R); $('tRoomExtra').setAttribute('aria-pressed',String(R.extra)); $('tRoomTimer').setAttribute('aria-pressed',String(R.timer!==false)); $('roomAI').value=R.ai;
+    pressSeg('segRoomN',R.n); pressSeg('segRoomR',R.R); pressSeg('segRoomTimer',timerSecs(R.timer)); $('roomAI').value=R.ai;
     const open=R.seats.filter(s=>s.kind==='open').length;
     $('bRoomStart').textContent = open ? `ابدأ (${open} للكمبيوتر)` : (R.started?'مباراة جديدة':'ابدأ المباراة');
     $('segRoomN').querySelectorAll('button').forEach(b=>b.disabled=R.started);
@@ -1122,12 +1115,10 @@ document.querySelectorAll('#segR button').forEach(b=>b.onclick=()=>{ cfg.R=+b.da
 document.querySelectorAll('#segBg button').forEach(b=>b.onclick=()=>{ look.bg=b.dataset.v; store.set('look',look); applyLook(); renderMenu(); });
 document.querySelectorAll('#segRoomN button').forEach(b=>b.onclick=()=>Net.setRoom({n:+b.dataset.v}));
 document.querySelectorAll('#segRoomR button').forEach(b=>b.onclick=()=>Net.setRoom({R:+b.dataset.v}));
-$('tRoomExtra').onclick=()=>Net.setRoom({extra:!Net.room.extra});
-$('tRoomTimer').onclick=()=>Net.setRoom({timer:Net.room.timer===false});
+document.querySelectorAll('#segRoomTimer button').forEach(b=>b.onclick=()=>Net.setRoom({timer:+b.dataset.v}));
 $('roomAI').onchange=e=>Net.setRoom({ai:e.target.value});
 $('bRoomStart').onclick=()=>{ sfx.unlock(); Net.startMatch(); };
-$('tExtra').onclick=()=>{ cfg.extra=!cfg.extra; store.set('cfg',cfg); renderMenu(); };
-$('tTimer').onclick=()=>{ cfg.timer=cfg.timer===false; store.set('cfg',cfg); renderMenu(); };
+document.querySelectorAll('#segTimer button').forEach(b=>b.onclick=()=>{ cfg.timer=+b.dataset.v; store.set('cfg',cfg); renderMenu(); });
 $('bStart').onclick=()=>{ sfx.unlock(); if(Net.role) Net.leave(true); startGame(localMatch()); };
 $('myName').oninput=e=>{ me.name=cleanName(e.target.value); store.set('me',me); };
 $('bHost').onclick=()=>{ sfx.unlock(); if(!Net.peer) Net.create(); };
