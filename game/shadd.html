@@ -42,6 +42,10 @@ input,select{user-select:text;-webkit-user-select:text}
 .chip.on .nm{color:var(--ink)}
 .chip.away{opacity:.6}
 .hud-bot{position:fixed;bottom:0;left:0;right:0;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;justify-content:space-between;gap:10px;pointer-events:none}
+.turnwrap{display:flex;align-items:center;gap:8px;min-width:0}
+.clock{--f:1;--c:#fff;width:44px;height:44px;border-radius:50%;flex:none;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--f)*360deg),#ffffff22 0);box-shadow:0 2px 10px #0004}
+.clock b{width:34px;height:34px;border-radius:50%;background:#161413;display:grid;place-items:center;font-family:var(--display);font-weight:400;font-size:20px;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
+.clock.low b{color:#ff6b5e}
 .turn{pointer-events:none;font-family:var(--display);font-size:21px;line-height:1.2;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--pill);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--panel-line);border-radius:14px;padding:6px 12px}
 .turn small{display:block;font-family:var(--body);font-size:12px;color:var(--ink-dim)}
 .tools{display:flex;gap:6px;pointer-events:auto;flex:none}
@@ -121,7 +125,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 <div class="hud-top" id="scores" hidden></div>
 <div class="banner" id="netBanner" hidden><span id="netBannerTxt">انقطع الاتصال</span><button id="bReconnect">إعادة الاتصال</button></div>
 <div class="hud-bot" id="hudbot" hidden>
-  <div class="turn" id="turn" aria-live="polite"></div>
+  <div class="turnwrap"><div class="clock" id="clock" hidden><b id="clockNum">10</b></div><div class="turn" id="turn" aria-live="polite"></div></div>
   <div class="tools">
     <button class="tool" id="bView" title="زاوية الكاميرا" aria-label="زاوية الكاميرا"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/></svg></button>
     <button class="tool" id="bSound" title="الصوت" aria-label="الصوت" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
@@ -152,6 +156,10 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
       <div class="toggle">
         <div>دور إضافي عند الإغلاق<small>من يُغلق مثلثًا يلعب مرة أخرى</small></div>
         <button class="sw-btn" id="tExtra" aria-pressed="false" aria-label="دور إضافي عند الإغلاق"></button>
+      </div>
+      <div class="toggle">
+        <div>مؤقت الدور ١٠ ثوانٍ<small>إذا خلص الوقت يروح الدور على اللاعب</small></div>
+        <button class="sw-btn" id="tTimer" aria-pressed="true" aria-label="مؤقت الدور"></button>
       </div>
       <button class="primary" id="bStart">ابدأ اللعب</button>
       <button class="ghost" id="bResume" hidden>متابعة المباراة</button>
@@ -201,6 +209,10 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
           <div class="toggle">
             <div>دور إضافي عند الإغلاق</div>
             <button class="sw-btn" id="tRoomExtra" aria-pressed="false" aria-label="دور إضافي عند الإغلاق"></button>
+          </div>
+          <div class="toggle">
+            <div>مؤقت الدور ١٠ ثوانٍ</div>
+            <button class="sw-btn" id="tRoomTimer" aria-pressed="true" aria-label="مؤقت الدور"></button>
           </div>
           <div class="toggle">
             <div>المقاعد الفارغة عند البدء<small>يلعبها الكمبيوتر</small></div>
@@ -304,6 +316,7 @@ const Engine = (() => {
     return out;
   }
   function apply(s,m){
+    if(m===-1){ const who=s.cur; s.history.push(-1); s.cur=(s.cur+1)%s.n; return {who, got:[], pass:true}; } // turn timed out
     const who=s.cur, got=captures(s,m);
     for(const e of s.B.moves[m].e) s.cov[e]++;
     for(const t of got) s.owner[t]=who;
@@ -381,7 +394,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const store={ get(k,d){ try{ const v=localStorage.getItem('shadd.'+k); return v==null?d:JSON.parse(v);}catch(e){return d;} }, set(k,v){ try{localStorage.setItem('shadd.'+k,JSON.stringify(v));}catch(e){} } };
 
 // ---------- preferences (per viewer) ----------
-let cfg={n:2,R:4,extra:false,types:['human','medium','medium','medium'],colors:[0,1,2,3],...store.get('cfg',{})};
+let cfg={n:2,R:4,extra:false,timer:true,types:['human','medium','medium','medium'],colors:[0,1,2,3],...store.get('cfg',{})};
 if(!Array.isArray(cfg.colors)||cfg.colors.length<4) cfg.colors=[0,1,2,3];
 let look={board:'classic',bg:'light',...store.get('look',{})};
 if(!BOARDS[look.board]) look.board='classic'; // a board option that no longer exists
@@ -538,6 +551,7 @@ function frame(now){
   ringPool.forEach(r=>{ if(r.visible) r.scale.setScalar(pulse+0.25); });
   if(hintMesh) hintMesh.material.opacity=0.35+0.35*Math.sin(now/140);
   if(camTarget!=null){ camTilt+=(camTarget-camTilt)*0.12; applyCamera(); if(Math.abs(camTarget-camTilt)<1e-3) camTarget=null; }
+  tickClock(now);
   renderer.render(scene,camera);
   requestAnimationFrame(frame);
 }
@@ -580,6 +594,8 @@ const sfx=(()=>{
     pop(){ tone('sine',520,980,0.12,0.18); tone('square',1400,700,0.05,0.03,3000); },
     pick(){ tone('sine',880,880,0.05,0.05); },
     ding(){ tone('sine',660,990,0.18,0.08); },
+    tick(){ tone('square',1200,1200,0.04,0.04,4000); },
+    buzz(){ tone('sawtooth',160,110,0.3,0.1,700); },
     win(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone('triangle',f,f*1.01,0.35,0.12),i*120)); }
   };
 })();
@@ -596,7 +612,7 @@ function localMatch(){
     const ai=AI_KINDS.includes(s.kind), same=seats.map((x,i)=>i).filter(i=>AI_KINDS.includes(seats[i].kind)===ai);
     s.name = same.length===1 ? (ai?'الكمبيوتر':'أنت') : (ai?'الكمبيوتر ':'اللاعب ')+(same.indexOf(p)+1);
   });
-  return {online:false,n:cfg.n,R:cfg.R,extra:cfg.extra,seats};
+  return {online:false,n:cfg.n,R:cfg.R,extra:cfg.extra,timer:cfg.timer!==false,seats};
 }
 
 // ---------- game flow ----------
@@ -609,17 +625,48 @@ function startGame(m, history){
   pieceMats.forEach(x=>x.dispose());
   pieceMats=m.seats.map(s=>new THREE.MeshStandardMaterial({color:lin(PALETTE[s.color].hex),roughness:0.38,flatShading:true}));
   makeBoard(m.R);
-  if(history){ for(const mv of history){ if(!Engine.legal(st,mv)) break; const r=Engine.apply(st,mv); addBand(mv,r.who,false); r.got.forEach(t=>addPiece(t,r.who,0,false)); } }
+  if(history){ for(const mv of history){ if(mv===-1){ Engine.apply(st,-1); continue; } if(!Engine.legal(st,mv)) break; const r=Engine.apply(st,mv); addBand(mv,r.who,false); r.got.forEach(t=>addPiece(t,r.who,0,false)); } }
   $('menu').hidden=true; $('end').hidden=true; $('scores').hidden=false; $('hudbot').hidden=false;
   rings([],0xffffff);
   if(match.online) wakeLock();
   if(st.over) return finish();
   nextTurn();
 }
+// ---------- turn timer (humans only; host/local device decides when it runs out) ----------
+const TURN_MS=10000;
+let turnClock=null, lastTick=-1;
+function startClock(){
+  turnClock=null; $('clock').hidden=true;
+  if(!match||!match.timer||!st||st.over) return;
+  const p=st.cur, s=match.seats[p];
+  if(isAI(p)||s.away) return;
+  turnClock={p,k:st.history.length,end:performance.now()+TURN_MS,gid:gameId}; lastTick=-1;
+}
+function tickClock(now){
+  const c=turnClock, el=$('clock');
+  if(!c||!st||c.gid!==gameId||st.history.length!==c.k||st.cur!==c.p||st.over){ if(!el.hidden) el.hidden=true; return; }
+  const paused=!match.online && !$('menu').hidden; // a local game pauses while the menu is open
+  if(paused){ c.end=now+(c.left??TURN_MS); return; }
+  const left=Math.max(0,c.end-now); c.left=left;
+  const sec=Math.ceil(left/1000);
+  el.hidden=false; el.style.setProperty('--f',(left/TURN_MS).toFixed(3)); el.style.setProperty('--c',CSSC(c.p));
+  el.classList.toggle('low',sec<=3); if($('clockNum').textContent!==String(sec)) $('clockNum').textContent=sec;
+  if(sec<=3 && sec>0 && sec!==lastTick && isMine(c.p)){ lastTick=sec; sfx.tick(); }
+  if(left<=0 && authoritative()){ turnClock=null; timeUp(c.p); }
+}
+function timeUp(p){
+  clearSel(); clearHint(); clearTimeout(pendingTimer);
+  Engine.apply(st,-1);
+  note('خلص وقت '+name(p)+' · راح عليه الدور');
+  sfx.buzz();
+  if(match.online && Net.role==='host') Net.broadcast({t:'move',m:-1,k:st.history.length});
+  nextTurn();
+}
 function nextTurn(){
   renderHud(); clearHint();
   if(!st) return;
   if(st.over) return finish();
+  startClock();
   const p=st.cur, s=match.seats[p];
   if(authoritative() && (isAI(p) || s.away)){
     busy=true; const gid=gameId, k=st.history.length;
@@ -848,7 +895,7 @@ const Net={
     }
     if(!this.peer){ setStatus('تعذّر إنشاء الغرفة. تأكد من اتصالك بالإنترنت وحاول مرة ثانية.',true); return; }
     this.role='host'; this.myId=this.peer.id;
-    this.room={n:2,R:cfg.R,extra:cfg.extra,ai:'medium',started:false,seats:[
+    this.room={n:2,R:cfg.R,extra:cfg.extra,timer:cfg.timer!==false,ai:'medium',started:false,seats:[
       {kind:'human',owner:this.myId,name:myName(),color:me.color,host:true},
       {kind:'open',color:-1}]};
     this.peer.on('connection',c=>this.hostConn(c));
@@ -910,7 +957,7 @@ const Net={
       for(let i=R.seats.length-1;i>=0&&R.seats.length>n;i--) if(R.seats[i].kind==='open') R.seats.splice(i,1);
       R.n=n;
     }
-    ['R','extra','ai'].forEach(k=>{ if(patch[k]!=null) R[k]=patch[k]; });
+    ['R','extra','ai','timer'].forEach(k=>{ if(patch[k]!=null) R[k]=patch[k]; });
     this.broadcast({t:'lobby',room:this.pub()}); renderOnline();
   },
   startMatch(){
@@ -955,7 +1002,8 @@ const Net={
     if(d.t==='room'){ this.room=d.room; if(match&&match.online){ match.seats=roomMatch(d.room).seats; renderHud(); } renderOnline(); return; }
     if(d.t==='move'){
       if(!st) return this.send({t:'sync'});
-      if(d.k===st.history.length+1 && Engine.legal(st,d.m)) play(d.m); else this.send({t:'sync'});
+      if(d.m===-1 && d.k===st.history.length+1){ const p=st.cur; clearTimeout(pendingTimer); busy=false; Engine.apply(st,-1); clearSel(); clearHint(); note('خلص وقت '+name(p)+' · راح عليه الدور'); if(isMine(p)) sfx.buzz(); nextTurn(); }
+      else if(d.k===st.history.length+1 && Engine.legal(st,d.m)) play(d.m); else this.send({t:'sync'});
       return;
     }
     if(d.t==='full'){ this.leave(true); setStatus(d.why==='started'?'المباراة بدأت بدونك. اطلب من المضيف غرفة جديدة.':'الغرفة ممتلئة.',true); return; }
@@ -985,7 +1033,7 @@ const Net={
 };
 addEventListener('pagehide',()=>{ try{ if(Net.role==='guest') Net.send({t:'bye'}); else if(Net.role==='host') Net.broadcast({t:'closed'}); }catch(e){} });
 
-function roomMatch(R){ return {online:true,n:R.seats.length,R:R.R,extra:R.extra,seats:R.seats.map(s=>({kind:s.kind,name:s.name||'لاعب',color:Math.max(0,s.color),owner:s.owner,away:!!s.away,host:!!s.host}))}; }
+function roomMatch(R){ return {online:true,n:R.seats.length,R:R.R,extra:R.extra,timer:R.timer!==false,seats:R.seats.map(s=>({kind:s.kind,name:s.name||'لاعب',color:Math.max(0,s.color),owner:s.owner,away:!!s.away,host:!!s.host}))}; }
 function cleanName(s){ return String(s||'').replace(/[<>]/g,'').trim().slice(0,14); }
 function myName(){ return cleanName(me.name)||'لاعب'; }
 function freeColor(pref,seatIdx){
@@ -1007,6 +1055,7 @@ function renderMenu(){
   $('localSec').hidden=menuMode!=='local'; $('onlineSec').hidden=menuMode!=='online';
   pressSeg('segN',cfg.n); pressSeg('segR',cfg.R);
   $('tExtra').setAttribute('aria-pressed',String(cfg.extra));
+  $('tTimer').setAttribute('aria-pressed',String(cfg.timer!==false));
   $('bResume').hidden=!(st&&match&&!match.online&&!st.over);
   $('prows').innerHTML=[...Array(cfg.n).keys()].map(p=>{
     const taken=new Set(cfg.colors.slice(0,cfg.n).filter((c,i)=>i!==p));
@@ -1047,7 +1096,7 @@ function renderOnline(){
   const playing=!!(st&&match&&match.online&&!st.over);
   $('hostCtl').hidden=!host||playing;
   if(host){
-    pressSeg('segRoomN',R.n); pressSeg('segRoomR',R.R); $('tRoomExtra').setAttribute('aria-pressed',String(R.extra)); $('roomAI').value=R.ai;
+    pressSeg('segRoomN',R.n); pressSeg('segRoomR',R.R); $('tRoomExtra').setAttribute('aria-pressed',String(R.extra)); $('tRoomTimer').setAttribute('aria-pressed',String(R.timer!==false)); $('roomAI').value=R.ai;
     const open=R.seats.filter(s=>s.kind==='open').length;
     $('bRoomStart').textContent = open ? `ابدأ (${open} للكمبيوتر)` : (R.started?'مباراة جديدة':'ابدأ المباراة');
     $('segRoomN').querySelectorAll('button').forEach(b=>b.disabled=R.started);
@@ -1074,9 +1123,11 @@ document.querySelectorAll('#segBg button').forEach(b=>b.onclick=()=>{ look.bg=b.
 document.querySelectorAll('#segRoomN button').forEach(b=>b.onclick=()=>Net.setRoom({n:+b.dataset.v}));
 document.querySelectorAll('#segRoomR button').forEach(b=>b.onclick=()=>Net.setRoom({R:+b.dataset.v}));
 $('tRoomExtra').onclick=()=>Net.setRoom({extra:!Net.room.extra});
+$('tRoomTimer').onclick=()=>Net.setRoom({timer:Net.room.timer===false});
 $('roomAI').onchange=e=>Net.setRoom({ai:e.target.value});
 $('bRoomStart').onclick=()=>{ sfx.unlock(); Net.startMatch(); };
 $('tExtra').onclick=()=>{ cfg.extra=!cfg.extra; store.set('cfg',cfg); renderMenu(); };
+$('tTimer').onclick=()=>{ cfg.timer=cfg.timer===false; store.set('cfg',cfg); renderMenu(); };
 $('bStart').onclick=()=>{ sfx.unlock(); if(Net.role) Net.leave(true); startGame(localMatch()); };
 $('myName').oninput=e=>{ me.name=cleanName(e.target.value); store.set('me',me); };
 $('bHost').onclick=()=>{ sfx.unlock(); if(!Net.peer) Net.create(); };
