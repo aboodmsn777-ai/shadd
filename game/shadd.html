@@ -116,6 +116,29 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 .rank{display:flex;flex-direction:column;gap:6px}
 .rank div{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#ffffff08}
 .rank .sc{margin-inline-start:auto;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+/* "your turn" alert: a burst when the turn starts + a glowing frame for the whole turn */
+.edgeglow{--c:#fff;position:fixed;inset:0;pointer-events:none;z-index:3;opacity:0;transition:opacity .35s;
+  box-shadow:inset 0 0 0 4px var(--c), inset 0 0 70px 4px var(--c)}
+.edgeglow.on{animation:edgePulse 1.8s ease-in-out infinite}
+.edgeglow.hurry{--c:#ff4d40;animation-duration:.55s}
+@keyframes edgePulse{0%,100%{opacity:.85}50%{opacity:.35}}
+.turnfx{--c:#fff;position:fixed;left:50%;top:44%;width:0;height:0;pointer-events:none;z-index:6}
+.turnfx i{position:absolute;left:-90px;top:-90px;width:180px;height:180px;border-radius:50%;border:7px solid var(--c);opacity:0;box-sizing:border-box}
+.turnfx i.disc{border:0;background:radial-gradient(circle,var(--c) 0,transparent 68%);}
+.turnfx b{position:absolute;left:0;top:0;transform:translate(-50%,-50%);font-family:var(--display);font-weight:400;font-size:58px;line-height:1;white-space:nowrap;color:#fff;
+  -webkit-text-stroke:2px var(--c);paint-order:stroke fill;text-shadow:0 0 22px var(--c),0 4px 18px #0007;opacity:0}
+.turnfx.go i{animation:fxRing .95s cubic-bezier(.15,.7,.3,1) forwards}
+.turnfx.go i:nth-child(3){animation-delay:.16s}
+.turnfx.go i.disc{animation:fxDisc 1.2s ease-out forwards}
+.turnfx.go b{animation:fxPop 1.35s cubic-bezier(.2,1.5,.4,1) forwards}
+@keyframes fxRing{0%{transform:scale(.15);opacity:1}100%{transform:scale(2.4);opacity:0}}
+@keyframes fxDisc{0%{transform:scale(.3);opacity:0}25%{transform:scale(1.1);opacity:.55}100%{transform:scale(1.6);opacity:0}}
+@keyframes fxPop{0%{opacity:0;transform:translate(-50%,-50%) scale(.35)}22%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}38%{transform:translate(-50%,-50%) scale(1)}72%{opacity:1}100%{opacity:0;transform:translate(-50%,-62%) scale(1)}}
+@media (prefers-reduced-motion: reduce){
+  .edgeglow.on,.edgeglow.hurry{animation:none;opacity:.7}
+  .turnfx.go i{animation:none} .turnfx.go b{animation:fxFade 1.3s linear forwards}
+  @keyframes fxFade{0%,70%{opacity:1}100%{opacity:0}}
+}
 @media (prefers-reduced-motion: reduce){.chip,.toast,.note,.sw-btn::after{transition:none}}
 </style>
 </head>
@@ -132,6 +155,8 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
     <button class="tool" id="bMenu" title="القائمة" aria-label="القائمة"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </div>
 </div>
+<div class="edgeglow" id="edgeGlow" aria-hidden="true"></div>
+<div class="turnfx" id="turnFx" aria-hidden="true"><i class="disc"></i><i></i><i></i><b id="turnFxTxt"></b></div>
 <div class="toast" id="toast"></div>
 <div class="note" id="note"></div>
 
@@ -644,7 +669,7 @@ function tickClock(now){
   const left=Math.max(0,c.end-now); c.left=left;
   const sec=Math.ceil(left/1000);
   el.hidden=false; el.style.setProperty('--f',(left/c.ms).toFixed(3)); el.style.setProperty('--c',CSSC(c.p));
-  el.classList.toggle('low',sec<=3); if($('clockNum').textContent!==String(sec)) $('clockNum').textContent=sec;
+  el.classList.toggle('low',sec<=3); $('edgeGlow').classList.toggle('hurry',sec<=3 && isMine(c.p)); if($('clockNum').textContent!==String(sec)) $('clockNum').textContent=sec;
   if(sec<=3 && sec>0 && sec!==lastTick && isMine(c.p)){ lastTick=sec; sfx.tick(); }
   if(left<=0 && authoritative()){ turnClock=null; timeUp(c.p); }
 }
@@ -655,6 +680,13 @@ function timeUp(p){
   sfx.buzz();
   if(match.online && Net.role==='host') Net.broadcast({t:'move',m:-1,k:st.history.length});
   nextTurn();
+}
+function turnAlert(p){
+  const fx=$('turnFx'), solo=match.online || match.seats.filter(x=>x.kind==='human').length===1;
+  fx.style.setProperty('--c',CSSC(p));
+  $('turnFxTxt').textContent = solo ? 'دورك!' : 'دور '+name(p);
+  fx.classList.remove('go'); void fx.offsetWidth; fx.classList.add('go');
+  sfx.ding(); try{ navigator.vibrate&&navigator.vibrate([30,60,30]); }catch(e){}
 }
 function nextTurn(){
   renderHud(); clearHint();
@@ -667,7 +699,7 @@ function nextTurn(){
     aiTimer=setTimeout(()=>{ if(gid!==gameId||st.history.length!==k||st.cur!==p) return; play(Engine.think(st, isAI(p)?s.kind:'medium')); }, s.away?1400:520+Math.random()*380);
   } else {
     busy=!isMine(p);
-    if(match.online && isMine(p)){ sfx.ding(); try{ navigator.vibrate&&navigator.vibrate(25); }catch(e){} }
+    if(isMine(p)) turnAlert(p);
   }
 }
 function play(m){
@@ -708,11 +740,13 @@ function finish(){
 }
 function renderHud(){
   if(!st||!match) return;
+  const eg=$('edgeGlow'), mine=!st.over && isMine(st.cur);
+  eg.classList.toggle('on',mine); if(!mine) eg.classList.remove('hurry'); eg.style.setProperty('--c',CSSC(st.cur));
   $('scores').innerHTML=st.scores.map((s,p)=>`<div class="chip${p===st.cur&&!st.over?' on':''}${match.seats[p].away?' away':''}" style="--c:${CSSC(p)}"><span class="sw" style="background:${CSSC(p)}"></span><span class="nm">${esc(name(p))}</span><span class="sc">${s}</span></div>`).join('');
   const left=B.tris.length-st.scores.reduce((a,b)=>a+b,0), p=st.cur, s=match.seats[p];
   let who;
   if(st.over) who='انتهت المباراة';
-  else if(match.online && isMine(p)) who='دورك';
+  else if(isMine(p) && (match.online || match.seats.filter(x=>x.kind==='human').length===1)) who='دورك';
   else if(isAI(p)) who='الكمبيوتر يفكّر…';
   else if(s.away) who=esc(name(p))+' غائب · الكمبيوتر يلعب عنه';
   else if(match.online) who='بانتظار '+esc(name(p))+'…';
@@ -1020,6 +1054,7 @@ const Net={
     const p=this.peer; setTimeout(()=>{ try{ p&&p.destroy(); }catch(e){} },200);
     this.peer=null; this.role=null; this.code=null; this.host=null; this.room=null; this.conns=new Map(); this.seen=new Map();
     $('netBanner').hidden=true;
+    $('edgeGlow').classList.remove('on','hurry');
     if(wasOnline){ clearTimeout(aiTimer); gameId++; st=null; match=null; $('scores').hidden=true; $('hudbot').hidden=true; $('end').hidden=true; }
     if(!silent) setStatus('');
     renderOnline();
@@ -1134,7 +1169,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=10;
+const BUILD=11;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
