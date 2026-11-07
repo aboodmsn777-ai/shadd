@@ -806,10 +806,15 @@ function tickClock(now){
   if(sec<=3 && sec>0 && sec!==lastTick && isMine(c.p)){ lastTick=sec; sfx.tick(); }
   if(left<=0 && authoritative()){ turnClock=null; timeUp(c.p); }
 }
+// Your own timeout speaks to you; anyone else's names the player.
+function timeoutMsg(p){
+  const solo = match.online || match.seats.filter(x=>x.kind==='human').length===1;
+  return isMine(p) && solo ? 'خلص دورك · راحت عليك' : 'خلص وقت '+name(p)+' · راح عليه الدور';
+}
 function timeUp(p){
   clearSel(); clearHint(); clearTimeout(pendingTimer);
   Engine.apply(st,-1);
-  note('خلص وقت '+name(p)+' · راح عليه الدور');
+  note(timeoutMsg(p));
   sfx.buzz();
   if(match.online && Net.role==='host') Net.broadcast({t:'move',m:-1,k:st.history.length});
   nextTurn();
@@ -1169,7 +1174,7 @@ const Net={
     if(d.t==='room'){ this.room=d.room; if(match&&match.online){ match.seats=roomMatch(d.room).seats; renderHud(); } renderOnline(); return; }
     if(d.t==='move'){
       if(!st) return this.send({t:'sync'});
-      if(d.m===-1 && d.k===st.history.length+1){ const p=st.cur; clearTimeout(pendingTimer); busy=false; Engine.apply(st,-1); clearSel(); clearHint(); note('خلص وقت '+name(p)+' · راح عليه الدور'); if(isMine(p)) sfx.buzz(); nextTurn(); }
+      if(d.m===-1 && d.k===st.history.length+1){ const p=st.cur; clearTimeout(pendingTimer); busy=false; Engine.apply(st,-1); clearSel(); clearHint(); note(timeoutMsg(p)); if(isMine(p)) sfx.buzz(); nextTurn(); }
       else if(d.k===st.history.length+1 && Engine.legal(st,d.m)) play(d.m); else this.send({t:'sync'});
       return;
     }
@@ -1308,7 +1313,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=12;
+const BUILD=13;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
