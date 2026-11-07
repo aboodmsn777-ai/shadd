@@ -542,7 +542,8 @@ let blobT=null;
 function blobTex(){ if(blobT) return blobT; const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'), g=x.createRadialGradient(64,64,10,64,64,64);
   g.addColorStop(0,'rgba(0,0,0,.55)'); g.addColorStop(.55,'rgba(0,0,0,.28)'); g.addColorStop(1,'rgba(0,0,0,0)'); x.fillStyle=g; x.fillRect(0,0,128,128); return blobT=new THREE.CanvasTexture(c); }
 // Each player gets a tray beside the board; captured pieces fly from it to the triangle.
-const TRAY_ANG=[Math.PI/2,-Math.PI/2,-Math.PI/6,Math.PI*5/6];
+// Trays sit on the side edges only (top and bottom stay clear): right-low, left-high, right-high, left-low.
+const TRAY_ANG=[Math.PI/6,Math.PI*7/6,-Math.PI/6,Math.PI*5/6];
 let trayPos=[];
 function roundRect(w,h,r){ const s=new THREE.Shape(), x=-w/2, y=-h/2; s.moveTo(x+r,y); s.lineTo(x+w-r,y); s.quadraticCurveTo(x+w,y,x+w,y+r); s.lineTo(x+w,y+h-r); s.quadraticCurveTo(x+w,y+h,x+w-r,y+h); s.lineTo(x+r,y+h); s.quadraticCurveTo(x,y+h,x,y+h-r); s.lineTo(x,y+r); s.quadraticCurveTo(x,y,x+r,y); return s; }
 function buildTrays(){
@@ -1313,7 +1314,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=13;
+const BUILD=14;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
