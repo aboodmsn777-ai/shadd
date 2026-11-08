@@ -37,7 +37,7 @@ input,select{user-select:text;-webkit-user-select:text}
 .chip{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border-radius:999px;background:var(--pill);border:1px solid var(--panel-line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:transform .25s, background .25s, border-color .25s;min-width:0}
 .sw{width:14px;height:14px;clip-path:polygon(50% 0,100% 100%,0 100%);flex:none;display:inline-block}
 .chip .nm{font-size:13px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:8em}
-.chip .sc{font-family:var(--display);font-size:22px;line-height:1;font-variant-numeric:tabular-nums;min-width:1.2em;text-align:center}
+.chip .sc{direction:ltr;unicode-bidi:isolate;font-family:var(--display);font-size:22px;line-height:1;font-variant-numeric:tabular-nums;min-width:1.2em;text-align:center}
 .chip.on{background:#100e0dd9;transform:translateY(2px) scale(1.06);border-color:var(--c)}
 .chip.on .nm{color:var(--ink)}
 .chip.away{opacity:.6}
@@ -115,7 +115,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 .result h2{font-family:var(--display);font-weight:400;font-size:44px;margin:0;line-height:1.1;text-wrap:balance}
 .rank{display:flex;flex-direction:column;gap:6px}
 .rank div{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#ffffff08}
-.rank .sc{margin-inline-start:auto;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+.rank .sc{direction:ltr;unicode-bidi:isolate;margin-inline-start:auto;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
 /* soft lens vignette pulls the eye to the board */
 .vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse 75% 70% at 50% 47%,transparent 55%,rgba(30,18,8,.22) 100%)}
 .overlay:not([hidden]) .panel{animation:panelIn .42s cubic-bezier(.2,.8,.2,1)}
@@ -344,7 +344,7 @@ const Engine = (() => {
     return out;
   }
   function apply(s,m){
-    if(m===-1){ const who=s.cur; s.history.push(-1); s.cur=(s.cur+1)%s.n; return {who, got:[], pass:true}; } // turn timed out
+    if(m===-1){ const who=s.cur; s.scores[who]-=1; s.history.push(-1); s.cur=(s.cur+1)%s.n; return {who, got:[], pass:true}; } // turn timed out: lose a point (can go below zero)
     const who=s.cur, got=captures(s,m);
     for(const e of s.B.moves[m].e) s.cov[e]++;
     for(const t of got) s.owner[t]=who;
@@ -808,14 +808,16 @@ function tickClock(now){
   if(left<=0 && authoritative()){ turnClock=null; timeUp(c.p); }
 }
 // Your own timeout speaks to you; anyone else's names the player.
+const fmtScore=v=>v<0?'\u2212'+Math.abs(v):String(v); // true minus sign reads better than a hyphen
+function penaltyFx(){ toast('\u22121','#ff4d40'); }
 function timeoutMsg(p){
   const solo = match.online || match.seats.filter(x=>x.kind==='human').length===1;
-  return isMine(p) && solo ? 'خلص دورك · راحت عليك' : 'خلص وقت '+name(p)+' · راح عليه الدور';
+  return isMine(p) && solo ? 'خلص دورك · راحت عليك · نقصت نقطة' : 'خلص وقت '+name(p)+' · راح عليه الدور ونقصت نقطة';
 }
 function timeUp(p){
   clearSel(); clearHint(); clearTimeout(pendingTimer);
   Engine.apply(st,-1);
-  note(timeoutMsg(p));
+  note(timeoutMsg(p)); penaltyFx();
   sfx.buzz();
   if(match.online && Net.role==='host') Net.broadcast({t:'move',m:-1,k:st.history.length});
   nextTurn();
@@ -871,7 +873,7 @@ function finish(){
   else if(match.online) title = isMine(winners[0]) ? 'مبروك! فزت' : 'فاز '+name(winners[0]);
   else title = (match.seats[winners[0]].kind==='human' ? 'مبروك ' : 'فاز ')+name(winners[0]);
   $('endTitle').textContent=title;
-  $('endRank').innerHTML=order.map(p=>`<div><span class="sw" style="width:16px;height:16px;background:${CSSC(p)}"></span>${esc(name(p))}<span class="sc">${st.scores[p]}</span></div>`).join('');
+  $('endRank').innerHTML=order.map(p=>`<div><span class="sw" style="width:16px;height:16px;background:${CSSC(p)}"></span>${esc(name(p))}<span class="sc">${fmtScore(st.scores[p])}</span></div>`).join('');
   const guest=match.online&&Net.role==='guest';
   $('bAgain').hidden=guest; $('endWait').hidden=!guest;
   const gid=gameId;
@@ -884,7 +886,7 @@ function renderHud(){
   const eg=$('edgeGlow'), mine=!st.over && isMine(st.cur);
   eg.classList.toggle('on',mine); if(!mine) eg.classList.remove('hurry'); eg.style.setProperty('--c',CSSC(st.cur));
   const prev=renderHud.prev||[]; renderHud.prev=st.scores.slice();
-  $('scores').innerHTML=st.scores.map((s,p)=>`<div class="chip${p===st.cur&&!st.over?' on':''}${match.seats[p].away?' away':''}" style="--c:${CSSC(p)}"><span class="sw" style="background:${CSSC(p)}"></span><span class="nm">${esc(name(p))}</span><span class="sc">${s}</span></div>`).join('');
+  $('scores').innerHTML=st.scores.map((s,p)=>`<div class="chip${p===st.cur&&!st.over?' on':''}${match.seats[p].away?' away':''}" style="--c:${CSSC(p)}"><span class="sw" style="background:${CSSC(p)}"></span><span class="nm">${esc(name(p))}</span><span class="sc">${fmtScore(s)}</span></div>`).join('');
   st.scores.forEach((v,i)=>{ if(prev.length===st.scores.length && v>prev[i]){ const ch=$('scores').children[i]; if(ch) ch.classList.add('bump'); } });
   const left=B.tris.length-st.scores.reduce((a,b)=>a+b,0), p=st.cur, s=match.seats[p];
   let who;
@@ -1175,7 +1177,7 @@ const Net={
     if(d.t==='room'){ this.room=d.room; if(match&&match.online){ match.seats=roomMatch(d.room).seats; renderHud(); } renderOnline(); return; }
     if(d.t==='move'){
       if(!st) return this.send({t:'sync'});
-      if(d.m===-1 && d.k===st.history.length+1){ const p=st.cur; clearTimeout(pendingTimer); busy=false; Engine.apply(st,-1); clearSel(); clearHint(); note(timeoutMsg(p)); if(isMine(p)) sfx.buzz(); nextTurn(); }
+      if(d.m===-1 && d.k===st.history.length+1){ const p=st.cur; clearTimeout(pendingTimer); busy=false; Engine.apply(st,-1); clearSel(); clearHint(); note(timeoutMsg(p)); penaltyFx(); if(isMine(p)) sfx.buzz(); nextTurn(); }
       else if(d.k===st.history.length+1 && Engine.legal(st,d.m)) play(d.m); else this.send({t:'sync'});
       return;
     }
@@ -1314,7 +1316,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=14;
+const BUILD=15;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
