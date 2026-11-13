@@ -1050,16 +1050,29 @@ const Songs=(()=>{
   function openDb(){ return new Promise(res=>{ try{ const r=indexedDB.open('shadd-songs',1); r.onupgradeneeded=()=>r.result.createObjectStore('songs',{keyPath:'id'}); r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); }catch(e){ res(null); } }); }
   async function init(){ db=await openDb(); if(!db) return render(); try{ const q=store_('readonly').getAll(); q.onsuccess=()=>{ list=(q.result||[]).sort((a,b)=>a.added-b.added); render(); }; }catch(e){ render(); } }
   const isAudio=f=>/^audio\//.test(f.type)||/\.(mp3|m4a|aac|wav|ogg)$/i.test(f.name);
-  function add(files){
+  const MIME={mp3:'audio/mpeg',m4a:'audio/mp4',mp4:'audio/mp4',aac:'audio/aac',wav:'audio/wav',ogg:'audio/ogg',oga:'audio/ogg',opus:'audio/ogg',flac:'audio/flac'};
+  const extOf=n=>((n.match(/\.([a-z0-9]+)$/i)||[])[1]||'mp3').toLowerCase();
+  const typeFor=(f,ext)=>{ const t=f.type||''; return (t && t!=='application/octet-stream' && t!=='audio/mp3') ? t : (MIME[ext]||'audio/mpeg'); };
+  async function add(files){
+    const picked=[...files].filter(isAudio);
+    if(!picked.length){ note('اختر ملفات صوت مثل MP3'); return; }
+    note('جاري إضافة '+(picked.length===1?'الأغنية':picked.length+' أغاني')+'…');
     let n=0;
-    [...files].forEach(f=>{ if(!isAudio(f)) return; const s={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name:f.name.replace(/\.[^.]+$/,''),blob:f,added:Date.now()+n};
-      list.push(s); n++; if(db) try{ store_('readwrite').put(s); }catch(e){} });
+    for(const f of picked){
+      try{
+        const ext=extOf(f.name), buf=await f.arrayBuffer();
+        const s={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name:f.name.replace(/\.[^.]+$/,''),ext,blob:new Blob([buf],{type:typeFor(f,ext)}),added:Date.now()+n};
+        list.push(s); n++; if(db) try{ store_('readwrite').put(s); }catch(e){}
+      }catch(e){ note('ما قدرت أقرأ الملف "'+f.name+'"'); }
+    }
     try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
-    note(n ? (n===1?'انضافت أغنية':'انضافت '+n+' أغاني') : 'اختر ملفات صوت مثل MP3');
-    if(n && (idx<0||audio.paused)){ idx=list.length-n; media(); note('انضافت · اضغط ▶ عشان تشتغل'); }
+    if(n && (idx<0||audio.paused)){ idx=list.length-n; audio.removeAttribute('src'); media(); note('انضافت · اضغط ▶ عشان تشتغل'); }
     render();
   }
-  const src=s=>urls[s.id]||(urls[s.id]=URL.createObjectURL(s.blob));
+  // Songs saved by an older version may have an untyped blob: re-type them before making a URL.
+  const typed=s=>{ const ext=s.ext||extOf(s.name+'.mp3'), b=s.blob; return (b.type && b.type!=='application/octet-stream') ? b : new Blob([b],{type:MIME[ext]||'audio/mpeg'}); };
+  const src=s=>urls[s.id]||(urls[s.id]=URL.createObjectURL(typed(s)));
+  const triedData={};
   function play(i){
     if(!list.length) return; idx=((i%list.length)+list.length)%list.length;
     session('playback'); audio.src=src(list[idx]); start(); sfx.unlock(); sfx.bed(false); media(); render();
@@ -1084,7 +1097,16 @@ const Songs=(()=>{
     render();
   }
   audio.addEventListener('ended',()=>play(idx+1));
-  audio.addEventListener('error',()=>{ if(idx>=0) note('الملف "'+list[idx].name+'" ما يشتغل · جرّب ملف MP3 ثاني'); render(); });
+  audio.addEventListener('error',()=>{
+    if(idx<0) return render();
+    const s=list[idx], code=audio.error?audio.error.code:0;
+    if(!triedData[s.id]){ // second try: hand the browser a data: URL instead of a blob: URL
+      triedData[s.id]=true; const r=new FileReader();
+      r.onload=()=>{ urls[s.id]=r.result; audio.src=r.result; const p=audio.play(); if(p&&p.catch) p.catch(()=>{ note('اضغط ▶ مرة ثانية'); render(); }); };
+      r.onerror=()=>note('ما قدرت أقرأ الأغنية (رمز '+code+')'); r.readAsDataURL(typed(s)); return;
+    }
+    note('الأغنية "'+s.name+'" ما اشتغلت (رمز '+code+') · جرّب ملف MP3 ثاني'); render();
+  });
   audio.addEventListener('play',render); audio.addEventListener('pause',render);
   function media(){ try{ if(!('mediaSession' in navigator)||idx<0) return; navigator.mediaSession.metadata=new MediaMetadata({title:list[idx].name,artist:'شَدّ · أغانيّ'});
     navigator.mediaSession.setActionHandler('play',toggle); navigator.mediaSession.setActionHandler('pause',toggle);
@@ -1432,7 +1454,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=20;
+const BUILD=21;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
