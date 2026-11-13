@@ -755,7 +755,7 @@ const sfx=(()=>{
   const bufs={}, FILES=['band','drop','score','turn','tick','timeup','win','vo_turn','vo_win'];
   // Mix with the player's own music app (Spotify, Anghami…) instead of pausing it.
   // Safari 17+ exposes navigator.audioSession; 'ambient' lets our effects play on top of other apps' audio.
-  try{ if(navigator.audioSession) navigator.audioSession.type='ambient'; }catch(e){}
+  // (set per-situation by the songs player below; default 'auto' keeps sound on even in silent mode)
   const ensure=()=>{ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} load(); } if(ctx&&ctx.state==='suspended') ctx.resume(); return ctx; };
   function load(){
     if(loading||!ctx||!location.protocol.startsWith('http')) return; loading=true;
@@ -1056,23 +1056,35 @@ const Songs=(()=>{
       list.push(s); n++; if(db) try{ store_('readwrite').put(s); }catch(e){} });
     try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
     note(n ? (n===1?'انضافت أغنية':'انضافت '+n+' أغاني') : 'اختر ملفات صوت مثل MP3');
-    render(); if(n && (idx<0||audio.paused)) play(list.length-n);
+    if(n && (idx<0||audio.paused)){ idx=list.length-n; media(); note('انضافت · اضغط ▶ عشان تشتغل'); }
+    render();
   }
   const src=s=>urls[s.id]||(urls[s.id]=URL.createObjectURL(s.blob));
   function play(i){
     if(!list.length) return; idx=((i%list.length)+list.length)%list.length;
-    session('playback'); sfx.unlock(); audio.src=src(list[idx]); audio.play().catch(()=>{}); sfx.bed(false); media(); render();
+    session('playback'); audio.src=src(list[idx]); start(); sfx.unlock(); sfx.bed(false); media(); render();
   }
-  function toggle(){ if(idx<0) return play(0); if(audio.paused){ session('playback'); audio.play().catch(()=>{}); sfx.bed(false); } else { audio.pause(); sfx.bed(true); session('ambient'); } render(); }
+  function start(){
+    const p=audio.play();
+    if(p&&p.catch) p.catch(err=>{ render();
+      note(err&&err.name==='NotAllowedError' ? 'الجوال منع التشغيل · اضغط ▶ مرة ثانية' : err&&err.name==='NotSupportedError' ? 'صيغة الملف ما تشتغل على هذا الجوال · جرّب MP3 ثاني' : 'ما قدرت أشغل الأغنية'); });
+  }
+  function toggle(){
+    if(idx<0) return play(0);
+    if(audio.paused){ session('playback'); if(!audio.src) audio.src=src(list[idx]); start(); sfx.bed(false); }
+    else { audio.pause(); sfx.bed(true); }
+    render();
+  }
   function remove(id){
     const i=list.findIndex(s=>s.id===id); if(i<0) return;
     if(urls[id]){ URL.revokeObjectURL(urls[id]); delete urls[id]; }
     list.splice(i,1); if(db) try{ store_('readwrite').delete(id); }catch(e){}
-    if(i===idx){ audio.pause(); idx=-1; if(list.length) play(Math.min(i,list.length-1)); else { sfx.bed(true); session('ambient'); } }
+    if(i===idx){ audio.pause(); idx=-1; if(list.length) play(Math.min(i,list.length-1)); else { sfx.bed(true); session('auto'); } }
     else if(i<idx) idx--;
     render();
   }
   audio.addEventListener('ended',()=>play(idx+1));
+  audio.addEventListener('error',()=>{ if(idx>=0) note('الملف "'+list[idx].name+'" ما يشتغل · جرّب ملف MP3 ثاني'); render(); });
   audio.addEventListener('play',render); audio.addEventListener('pause',render);
   function media(){ try{ if(!('mediaSession' in navigator)||idx<0) return; navigator.mediaSession.metadata=new MediaMetadata({title:list[idx].name,artist:'شَدّ · أغانيّ'});
     navigator.mediaSession.setActionHandler('play',toggle); navigator.mediaSession.setActionHandler('pause',toggle);
@@ -1420,7 +1432,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=19;
+const BUILD=20;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
