@@ -116,6 +116,8 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 .rank{display:flex;flex-direction:column;gap:6px}
 .rank div{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#ffffff08}
 .rank .sc{direction:ltr;unicode-bidi:isolate;margin-inline-start:auto;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+/* tap-to-listen when the browser blocks the host's music */
+.listen{position:fixed;left:50%;transform:translateX(-50%);top:calc(110px + env(safe-area-inset-top,0px));z-index:7;border:0;border-radius:999px;padding:10px 18px;background:var(--accent);color:#1d1606;font-weight:700;box-shadow:0 8px 24px #0006}
 /* my-songs panel */
 #songs{background:rgba(8,6,5,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .songs-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -193,6 +195,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 <div class="vignette" aria-hidden="true"></div>
 <div class="edgeglow" id="edgeGlow" aria-hidden="true"></div>
 <div class="turnfx" id="turnFx" aria-hidden="true"><i class="disc"></i><i></i><i></i><b id="turnFxTxt"></b></div>
+<button class="listen" id="listenBtn" hidden>🔊 اضغط عشان تسمع أغاني المضيف</button>
 <div class="toast" id="toast"></div>
 <div class="note" id="note"></div>
 
@@ -1082,9 +1085,22 @@ const Songs=(()=>{
   const typed=s=>{ const ext=s.ext||extOf(s.name+'.mp3'), b=s.blob; return (b.type && b.type!=='application/octet-stream') ? b : new Blob([b],{type:MIME[ext]||'audio/mpeg'}); };
   const src=s=>urls[s.id]||(urls[s.id]=URL.createObjectURL(typed(s)));
   const triedData={};
+  // The player goes through Web Audio so the host can stream it live to everyone in an online room.
+  // Built inside a tap (iOS only starts audio contexts from a gesture).
+  let actx=null, srcNode=null, streamDest=null;
+  function graph(){
+    if(srcNode){ if(actx.state==='suspended') actx.resume(); return; }
+    try{
+      actx=new (window.AudioContext||window.webkitAudioContext)();
+      srcNode=actx.createMediaElementSource(audio); srcNode.connect(actx.destination);
+      if(actx.createMediaStreamDestination){ streamDest=actx.createMediaStreamDestination(); srcNode.connect(streamDest); }
+      if(actx.state==='suspended') actx.resume();
+    }catch(e){ srcNode=null; streamDest=null; }
+  }
+  function shared(){ try{ Net.shareMusic(); }catch(e){} }
   function play(i){
     if(!list.length) return; idx=((i%list.length)+list.length)%list.length;
-    session('playback'); audio.src=src(list[idx]); start(); sfx.unlock(); sfx.bed(false); media(); render();
+    session('playback'); graph(); audio.src=src(list[idx]); start(); sfx.unlock(); sfx.bed(false); media(); render(); shared();
   }
   function start(){
     const p=audio.play();
@@ -1093,9 +1109,9 @@ const Songs=(()=>{
   }
   function toggle(){
     if(idx<0) return play(0);
-    if(audio.paused){ session('playback'); if(!audio.src) audio.src=src(list[idx]); start(); sfx.bed(false); }
+    if(audio.paused){ session('playback'); graph(); if(!audio.src) audio.src=src(list[idx]); start(); sfx.bed(false); }
     else { audio.pause(); sfx.bed(true); }
-    render();
+    render(); shared();
   }
   function remove(id){
     const i=list.findIndex(s=>s.id===id); if(i<0) return;
@@ -1136,14 +1152,28 @@ const Songs=(()=>{
   $('songFile').addEventListener('change',e=>{ const inp=e.target, f=[...(inp.files||[])]; Promise.resolve(add(f)).finally(()=>{ try{ inp.value=''; }catch(x){} }); });
   $('sPlay').onclick=toggle; $('sNext').onclick=()=>play(idx+1); $('sPrev').onclick=()=>play(idx-1);
   init();
-  return {play,toggle,get count(){return list.length;}};
+  return {play,toggle,get count(){return list.length;},
+    stream:()=>streamDest?streamDest.stream:null,
+    get playing(){ return idx>=0&&!audio.paused; }, get name(){ return idx>=0?list[idx].name:''; }};
 })();
 const openSongs=()=>{ sfx.unlock(); $('songs').hidden=false; };
 $('bSongs').onclick=openSongs; $('bSongsMenu').onclick=openSongs;
 $('songsClose').onclick=()=>{ $('songs').hidden=true; };
 $('songs').addEventListener('click',e=>{ if(e.target.id==='songs') $('songs').hidden=true; });
+// Songs the room host is playing arrive as a live audio stream.
+const HostMusic=(()=>{
+  const el=new Audio(); el.setAttribute('playsinline',''); el.autoplay=true;
+  const btn=$('listenBtn');
+  function attach(stream){
+    el.srcObject=stream; el.muted=!sfx.musicOn; sfx.bed(false);
+    const p=el.play(); if(p&&p.catch) p.catch(()=>{ btn.hidden=false; });
+  }
+  btn.onclick=()=>{ btn.hidden=true; el.play().catch(()=>{}); };
+  function stop(){ try{ el.pause(); el.srcObject=null; }catch(e){} btn.hidden=true; sfx.bed(true); }
+  return {attach,stop,mute(m){ el.muted=m; },get el(){ return el; }};
+})();
 const musBtn=$('bMusic'); musBtn.setAttribute('aria-pressed',String(sfx.musicOn));
-musBtn.onclick=()=>{ sfx.musicOn=!sfx.musicOn; musBtn.setAttribute('aria-pressed',String(sfx.musicOn)); };
+musBtn.onclick=()=>{ sfx.musicOn=!sfx.musicOn; musBtn.setAttribute('aria-pressed',String(sfx.musicOn)); HostMusic.mute(!sfx.musicOn); };
 $('bMenu').onclick=()=>{ if(!match||!match.online) clearTimeout(aiTimer); openMenu(); };
 $('bResume').onclick=()=>{ $('menu').hidden=true; busy=false; nextTurn(); };
 $('bBackGame').onclick=()=>{ $('menu').hidden=true; renderHud(); };
@@ -1188,12 +1218,15 @@ class BCPeer{ constructor(id){ this.id=id||('g'+Math.random().toString(36).slice
   reconnect(){} destroy(){ [...this.cs.values()].forEach(c=>c.close()); this.ch.close(); } }
 
 const Net={
-  role:null, code:null, myId:null, peer:null, conns:new Map(), host:null, room:null, leaving:false, pingT:null, seen:new Map(), retries:0, token:null, lastHost:0,
+  role:null, code:null, myId:null, peer:null, conns:new Map(), calls:new Map(), host:null, room:null, leaving:false, pingT:null, seen:new Map(), retries:0, token:null, lastHost:0,
   hostOpen(){ return !!(this.host && this.host.open); },
   makePeer(id){
     if(useBC) return Promise.resolve(new BCPeer(id));
     return loadScript(PEER_SRC,'Peer').then(()=>new Promise((res,rej)=>{
-      const p=new window.Peer(id,{config:ICE,debug:0}); let done=false;
+      // ?peer=host:port points at a self-hosted PeerJS server (used for local end-to-end tests)
+      const ps=(location.search.match(/[?&]peer=([\w.-]+):(\d+)/)||[]);
+      const opts=ps[1]?{host:ps[1],port:+ps[2],path:'/',secure:false,config:ICE,debug:0}:{config:ICE,debug:0};
+      const p=new window.Peer(id,opts); let done=false;
       p.on('open',()=>{ if(!done){ done=true; res(p); } });
       p.on('error',e=>{ if(!done){ done=true; try{ p.destroy(); }catch(x){} rej(e); } else Net.onPeerError(e); });
       p.on('disconnected',()=>{ if(!Net.leaving && !p.destroyed) setTimeout(()=>{ try{ p.reconnect(); }catch(e){} },1000); });
@@ -1226,6 +1259,19 @@ const Net={
     clearInterval(this.pingT); this.pingT=setInterval(()=>this.hostPing(),4000);
     setStatus(''); renderOnline();
   },
+  // Stream the host's own songs to a guest (PeerJS media call). The stream exists once the host has played a song.
+  callMusic(pid){
+    const st=Songs.stream();
+    if(!st||this.role!=='host'||!this.peer||typeof this.peer.call!=='function'||this.calls.has(pid)) return;
+    try{ const call=this.peer.call(pid,st); this.calls.set(pid,call);
+      call.on('close',()=>{ if(this.calls.get(pid)===call) this.calls.delete(pid); });
+      call.on('error',()=>{ if(this.calls.get(pid)===call) this.calls.delete(pid); }); }catch(e){}
+  },
+  shareMusic(){
+    if(this.role!=='host') return;
+    this.conns.forEach((c,pid)=>this.callMusic(pid));
+    this.broadcast({t:'song',playing:Songs.playing,name:Songs.name});
+  },
   hostConn(c){
     c.on('data',d=>this.hostData(c,d));
     c.on('close',()=>this.hostDrop(c.peer,c));
@@ -1246,6 +1292,7 @@ const Net={
       const seat=R.seats[s], wasAway=seat.away;
       const old=this.conns.get(seat.owner); if(old && old!==c){ this.conns.delete(seat.owner); try{ old.close(); }catch(e){} }
       seat.owner=c.peer; seat.away=false; this.conns.set(c.peer,c);
+      this.callMusic(c.peer); if(Songs.playing) c.send({t:'song',playing:true,name:Songs.name});
       if(R.started && st){ c.send({t:'state',room:this.pub(),history:st.history}); this.broadcast({t:'room',room:this.pub()}); if(wasAway) note(seat.name+' رجع للمباراة'); renderHud(); }
       else { this.broadcast({t:'lobby',room:this.pub()}); renderOnline(); sfx.ding(); }
     } else if(d.t==='move'){
@@ -1260,6 +1307,7 @@ const Net={
   hostDrop(pid,c){
     if(this.conns.get(pid)!==c) return;
     this.conns.delete(pid); this.seen.delete(pid);
+    const mc=this.calls.get(pid); if(mc){ try{ mc.close(); }catch(e){} this.calls.delete(pid); }
     const R=this.room; if(!R) return;
     const seat=R.seats.find(x=>x.owner===pid); if(!seat) return;
     if(R.started){
@@ -1301,6 +1349,7 @@ const Net={
     setStatus('جاري الاتصال بالغرفة…'); this.leaving=false;
     try{ this.peer=await this.makePeer(); }catch(e){ setStatus('تعذّر الاتصال بالإنترنت. حاول مرة ثانية.',true); return; }
     this.role='guest'; this.myId=this.peer.id; this.code=code; this.retries=0;
+    if(typeof this.peer.on==='function') this.peer.on('call',call=>{ try{ call.answer(); call.on('stream',st=>HostMusic.attach(st)); call.on('close',()=>HostMusic.stop()); }catch(e){} });
     if(useBC){ try{ this.token=sessionStorage.getItem('shadd.tok.'+code)||Math.random().toString(36).slice(2); sessionStorage.setItem('shadd.tok.'+code,this.token); }catch(e){ this.token=Math.random().toString(36).slice(2); } }
     else { const toks=store.get('tokens',{}); this.token=toks[code]||(Math.random().toString(36).slice(2)+Date.now().toString(36)); toks[code]=this.token; store.set('tokens',toks); }
     this.connectHost();
@@ -1321,6 +1370,7 @@ const Net={
     if(!d||typeof d!=='object'||c!==this.host) return;
     this.lastHost=Date.now();
     if(d.t==='ping'){ this.send({t:'pong'}); return; }
+    if(d.t==='song'){ if(d.playing){ note('🎵 المضيف يشغّل: '+String(d.name||'').slice(0,60)); sfx.bed(false); } else sfx.bed(true); return; }
     if(d.t==='lobby'){ this.room=d.room; setStatus(''); renderOnline(); return; }
     if(d.t==='start'||d.t==='state'){ this.room=d.room; startGame(roomMatch(d.room), d.t==='state'?d.history:[]); return; }
     if(d.t==='room'){ this.room=d.room; if(match&&match.online){ match.seats=roomMatch(d.room).seats; renderHud(); } renderOnline(); return; }
@@ -1346,6 +1396,7 @@ const Net={
   leave(silent){
     const wasOnline=match&&match.online;
     this.leaving=true; clearInterval(this.pingT);
+    this.calls.forEach(c=>{ try{ c.close(); }catch(e){} }); this.calls=new Map(); HostMusic.stop();
     try{ if(this.role==='host') this.broadcast({t:'closed'}); else this.send({t:'bye'}); }catch(e){}
     const p=this.peer; setTimeout(()=>{ try{ p&&p.destroy(); }catch(e){} },200);
     this.peer=null; this.role=null; this.code=null; this.host=null; this.room=null; this.conns=new Map(); this.seen=new Map();
@@ -1458,14 +1509,14 @@ $('joinCode').addEventListener('keydown',e=>{ if(e.key==='Enter') $('bJoin').cli
 $('bLeave').onclick=()=>{ Net.leave(); menuMode='online'; renderMenu(); };
 $('bReconnect').onclick=()=>{ Net.retries=0; Net.reconnect(); };
 
-if(useBC) window.__shadd={ pegXY:i=>{ const v=pegPos[i].clone().setY(0.15).project(camera), r=renderer.domElement.getBoundingClientRect(); return {x:r.left+(v.x+1)/2*r.width, y:r.top+(1-v.y)/2*r.height}; }, legalPegs:()=>{ const m=Engine.legalMoves(st)[0]; return B.moves[m].pegs; }, path:()=>path.slice(), state:()=>st&&{cur:st.cur,over:st.over,history:st.history.slice(),scores:st.scores.slice()}, canAct, think:l=>Engine.think(st,l||'medium'), submit, net:()=>({role:Net.role,code:Net.code,room:Net.room}), seats:()=>match&&match.seats.map(s=>({name:s.name,kind:s.kind,color:s.color,away:s.away})) };
+if(useBC||/[?&]peer=/.test(location.search)) window.__shadd={ hostMusicEl:()=>HostMusic.el, songsStream:()=>Songs.stream(), pegXY:i=>{ const v=pegPos[i].clone().setY(0.15).project(camera), r=renderer.domElement.getBoundingClientRect(); return {x:r.left+(v.x+1)/2*r.width, y:r.top+(1-v.y)/2*r.height}; }, legalPegs:()=>{ const m=Engine.legalMoves(st)[0]; return B.moves[m].pegs; }, path:()=>path.slice(), state:()=>st&&{cur:st.cur,over:st.over,history:st.history.slice(),scores:st.scores.slice()}, canAct, think:l=>Engine.think(st,l||'medium'), submit, net:()=>({role:Net.role,code:Net.code,room:Net.room}), seats:()=>match&&match.seats.map(s=>({name:s.name,kind:s.kind,color:s.color,away:s.away})) };
 function readJoinHash(){
   const j=location.hash.match(/^#join-([A-Za-z0-9]{4})$/); if(!j) return false;
   menuMode='online'; $('joinCode').value=j[1].toUpperCase(); return true;
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=23;
+const BUILD=24;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
