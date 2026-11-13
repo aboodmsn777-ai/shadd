@@ -116,6 +116,26 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 .rank{display:flex;flex-direction:column;gap:6px}
 .rank div{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#ffffff08}
 .rank .sc{direction:ltr;unicode-bidi:isolate;margin-inline-start:auto;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+/* my-songs panel */
+#songs{background:rgba(8,6,5,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.songs-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.songs-head h2{font-family:var(--display);font-weight:400;font-size:40px;margin:0;line-height:1}
+.ghost.slim{padding:8px 14px}
+.nowp{display:flex;align-items:center;gap:12px;background:#00000055;border:1px solid var(--panel-line);border-radius:16px;padding:12px 14px}
+.nowtxt{flex:1;min-width:0}.nowtxt small{display:block;font-size:12px;color:var(--ink-dim)}
+.nowtxt b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrl{display:flex;gap:6px;flex:none;direction:ltr}
+.ctrl button{width:40px;height:40px;border-radius:50%;border:1px solid var(--panel-line);background:#ffffff10;display:grid;place-items:center;padding:0}
+.ctrl button.big{width:48px;height:48px;background:var(--accent);border:0}
+.ctrl svg{width:18px;height:18px;fill:var(--ink);stroke:var(--ink);stroke-width:1.5;stroke-linejoin:round}
+.ctrl button.big svg{fill:#1d1606;stroke:#1d1606}
+.songlist{display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow:auto}
+.song{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#ffffff08;cursor:pointer}
+.song.on{background:#f2c23026;outline:1px solid #f2c23066}
+.song .sn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song .del{border:0;background:transparent;color:var(--ink-dim);font-size:20px;line-height:1;padding:2px 6px}
+.songlist .empty{color:var(--ink-dim);font-size:14px;text-align:center;padding:14px}
+.addsong{text-align:center;cursor:pointer;display:block}
 /* soft lens vignette pulls the eye to the board */
 .vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse 75% 70% at 50% 47%,transparent 55%,rgba(30,18,8,.22) 100%)}
 .overlay:not([hidden]) .panel{animation:panelIn .42s cubic-bezier(.2,.8,.2,1)}
@@ -161,6 +181,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
   <div class="tools">
     <button class="tool" id="bView" title="زاوية الكاميرا" aria-label="زاوية الكاميرا"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/></svg></button>
     <button class="tool" id="bSound" title="الصوت" aria-label="الصوت" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></svg></button>
+    <button class="tool" id="bSongs" title="أغانيّ" aria-label="أغانيّ" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 6h11M3 11h11M3 16h7"/><path d="M17 17.5V6l4-1"/><circle cx="15" cy="17.5" r="2.5"/></svg></button>
     <button class="tool" id="bMusic" title="الموسيقى" aria-label="الموسيقى" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></button>
     <button class="tool" id="bMenu" title="القائمة" aria-label="القائمة"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   </div>
@@ -265,6 +286,8 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
       </div>
     </section>
 
+    <button class="ghost" id="bSongsMenu">أغانيّ · شغّل أغانيك وأنت تلعب</button>
+
     <details>
       <summary>طريقة اللعب</summary>
       <ul class="rules">
@@ -275,6 +298,24 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
         <li><b>أونلاين</b>: أنشئ غرفة وأرسل الرابط أو الكود، ويلعب كل واحد من جواله ولو كنتم في أماكن مختلفة. خلّ شاشة المضيف مفتوحة.</li>
       </ul>
     </details>
+  </div>
+</div>
+
+<div class="overlay" id="songs" hidden>
+  <div class="panel">
+    <div class="songs-head"><h2>أغانيّ</h2><button class="ghost slim" id="songsClose">إغلاق</button></div>
+    <div class="nowp">
+      <div class="nowtxt"><small>يشتغل الحين</small><b id="nowName">ما فيه أغنية شغالة</b></div>
+      <div class="ctrl">
+        <button id="sPrev" aria-label="السابقة"><svg viewBox="0 0 24 24"><path d="M18 6v12L8 12zM6 6v12"/></svg></button>
+        <button id="sPlay" class="big" aria-label="تشغيل"><svg viewBox="0 0 24 24" id="sPlayIco"><path d="M8 5v14l11-7z"/></svg></button>
+        <button id="sNext" aria-label="التالية"><svg viewBox="0 0 24 24"><path d="M6 6v12l10-6zM18 6v12"/></svg></button>
+      </div>
+    </div>
+    <div class="songlist" id="songList"></div>
+    <label class="primary addsong" for="songFile">+ إضافة أغاني من جوالك</label>
+    <input type="file" id="songFile" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" multiple hidden>
+    <div class="status" id="songsNote">الأغاني تنحفظ داخل اللعبة على هذا الجهاز فقط، وما تنرفع لأي مكان.</div>
   </div>
 </div>
 
@@ -708,7 +749,7 @@ addEventListener('resize',resize);
 // ---------- sound ----------
 const sfx=(()=>{
   // Recorded sounds (ElevenLabs) with synthesised fallbacks, plus a looping music bed.
-  let ctx=null, on=store.get('sound',true), musicOn=store.get('music',true), loading=false, music=null;
+  let ctx=null, on=store.get('sound',true), musicOn=store.get('music',true), loading=false, music=null, bedOk=true;
   // Sounds live next to the page on GitHub Pages; other hosts (e.g. Vercel) fetch them from there (CORS is open).
   const AUDIO=/github\.io$|vercel\.app$|^localhost$|^127\./.test(location.hostname)?'audio/':'https://aboodmsn777-ai.github.io/shadd/game/audio/';
   const bufs={}, FILES=['band','drop','score','turn','tick','timeup','win','vo_turn','vo_win'];
@@ -736,7 +777,7 @@ const sfx=(()=>{
   const vary=()=>0.93+Math.random()*0.14;
   function syncMusic(){
     if(!location.protocol.startsWith('http')) return;
-    if(on&&musicOn){ if(!music){ music=new Audio(AUDIO+'music.mp3'); music.loop=true; music.volume=0.22; } music.play().catch(()=>{}); }
+    if(on&&musicOn&&bedOk){ if(!music){ music=new Audio(AUDIO+'music.mp3'); music.loop=true; music.volume=0.22; } music.play().catch(()=>{}); }
     else if(music) music.pause();
   }
   document.addEventListener('visibilitychange',()=>{ if(!music) return; if(document.hidden) music.pause(); else syncMusic(); });
@@ -744,6 +785,7 @@ const sfx=(()=>{
     get on(){return on;}, set on(v){on=v; store.set('sound',v); syncMusic();},
     get musicOn(){return musicOn;}, set musicOn(v){musicOn=v; store.set('music',v); syncMusic();},
     unlock(){ ensure(); syncMusic(); },
+    bed(ok){ bedOk=ok; syncMusic(); }, // pause the game's own music while the player's songs play
     twang(){ sample('band',0.75,vary()) || (tone('sawtooth',190,95,0.28,0.12,900), tone('triangle',380,180,0.18,0.05)); },
     pop(){ sample('drop',0.9,vary()) || (tone('sine',520,980,0.12,0.18), tone('square',1400,700,0.05,0.03,3000)); },
     score(){ sample('score',0.6) || tone('sine',880,1320,0.2,0.08); },
@@ -998,6 +1040,63 @@ function drawGhost(m,color){
 $('bView').onclick=()=>{ viewMode=(viewMode+1)%VIEWS.length; if(reduceMotion){ camTilt=VIEWS[viewMode]; applyCamera(); } else camTarget=VIEWS[viewMode]; };
 const sndBtn=$('bSound'); sndBtn.setAttribute('aria-pressed',String(sfx.on));
 sndBtn.onclick=()=>{ sfx.on=!sfx.on; sndBtn.setAttribute('aria-pressed',String(sfx.on)); };
+// ---------- my songs: MP3s picked from the phone, kept in this browser (IndexedDB) ----------
+const Songs=(()=>{
+  let db=null, list=[], idx=-1;
+  const audio=new Audio(); audio.preload='auto'; audio.volume=0.9;
+  const urls={};
+  const session=t=>{ try{ if(navigator.audioSession) navigator.audioSession.type=t; }catch(e){} };
+  const store_=mode=>db.transaction('songs',mode).objectStore('songs');
+  function openDb(){ return new Promise(res=>{ try{ const r=indexedDB.open('shadd-songs',1); r.onupgradeneeded=()=>r.result.createObjectStore('songs',{keyPath:'id'}); r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); }catch(e){ res(null); } }); }
+  async function init(){ db=await openDb(); if(!db) return render(); try{ const q=store_('readonly').getAll(); q.onsuccess=()=>{ list=(q.result||[]).sort((a,b)=>a.added-b.added); render(); }; }catch(e){ render(); } }
+  const isAudio=f=>/^audio\//.test(f.type)||/\.(mp3|m4a|aac|wav|ogg)$/i.test(f.name);
+  function add(files){
+    let n=0;
+    [...files].forEach(f=>{ if(!isAudio(f)) return; const s={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name:f.name.replace(/\.[^.]+$/,''),blob:f,added:Date.now()+n};
+      list.push(s); n++; if(db) try{ store_('readwrite').put(s); }catch(e){} });
+    try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
+    note(n ? (n===1?'انضافت أغنية':'انضافت '+n+' أغاني') : 'اختر ملفات صوت مثل MP3');
+    render(); if(n && (idx<0||audio.paused)) play(list.length-n);
+  }
+  const src=s=>urls[s.id]||(urls[s.id]=URL.createObjectURL(s.blob));
+  function play(i){
+    if(!list.length) return; idx=((i%list.length)+list.length)%list.length;
+    session('playback'); sfx.unlock(); audio.src=src(list[idx]); audio.play().catch(()=>{}); sfx.bed(false); media(); render();
+  }
+  function toggle(){ if(idx<0) return play(0); if(audio.paused){ session('playback'); audio.play().catch(()=>{}); sfx.bed(false); } else { audio.pause(); sfx.bed(true); session('ambient'); } render(); }
+  function remove(id){
+    const i=list.findIndex(s=>s.id===id); if(i<0) return;
+    if(urls[id]){ URL.revokeObjectURL(urls[id]); delete urls[id]; }
+    list.splice(i,1); if(db) try{ store_('readwrite').delete(id); }catch(e){}
+    if(i===idx){ audio.pause(); idx=-1; if(list.length) play(Math.min(i,list.length-1)); else { sfx.bed(true); session('ambient'); } }
+    else if(i<idx) idx--;
+    render();
+  }
+  audio.addEventListener('ended',()=>play(idx+1));
+  audio.addEventListener('play',render); audio.addEventListener('pause',render);
+  function media(){ try{ if(!('mediaSession' in navigator)||idx<0) return; navigator.mediaSession.metadata=new MediaMetadata({title:list[idx].name,artist:'شَدّ · أغانيّ'});
+    navigator.mediaSession.setActionHandler('play',toggle); navigator.mediaSession.setActionHandler('pause',toggle);
+    navigator.mediaSession.setActionHandler('nexttrack',()=>play(idx+1)); navigator.mediaSession.setActionHandler('previoustrack',()=>play(idx-1)); }catch(e){} }
+  function render(){
+    const playing=idx>=0&&!audio.paused;
+    $('bSongs').setAttribute('aria-pressed',String(playing));
+    $('nowName').textContent= idx>=0 ? list[idx].name : 'ما فيه أغنية شغالة';
+    $('sPlayIco').innerHTML= playing ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+    $('sPlay').setAttribute('aria-label',playing?'إيقاف مؤقت':'تشغيل');
+    const box=$('songList');
+    if(!list.length){ box.innerHTML='<div class="empty">ما فيه أغاني بعد. اضغط «إضافة أغاني» واختر ملفات MP3 من جوالك.</div>'; return; }
+    box.innerHTML=list.map((s,i)=>`<div class="song${i===idx?' on':''}" data-i="${i}"><span class="sn">${i===idx&&playing?'♪ ':''}${esc(s.name)}</span><button class="del" data-del="${s.id}" aria-label="حذف ${esc(s.name)}">×</button></div>`).join('');
+  }
+  $('songList').addEventListener('click',e=>{ const d=e.target.closest('[data-del]'); if(d){ e.stopPropagation(); remove(d.dataset.del); return; } const r=e.target.closest('.song'); if(r) play(+r.dataset.i); });
+  $('songFile').addEventListener('change',e=>{ add(e.target.files||[]); e.target.value=''; });
+  $('sPlay').onclick=toggle; $('sNext').onclick=()=>play(idx+1); $('sPrev').onclick=()=>play(idx-1);
+  init();
+  return {play,toggle,get count(){return list.length;}};
+})();
+const openSongs=()=>{ sfx.unlock(); $('songs').hidden=false; };
+$('bSongs').onclick=openSongs; $('bSongsMenu').onclick=openSongs;
+$('songsClose').onclick=()=>{ $('songs').hidden=true; };
+$('songs').addEventListener('click',e=>{ if(e.target.id==='songs') $('songs').hidden=true; });
 const musBtn=$('bMusic'); musBtn.setAttribute('aria-pressed',String(sfx.musicOn));
 musBtn.onclick=()=>{ sfx.musicOn=!sfx.musicOn; musBtn.setAttribute('aria-pressed',String(sfx.musicOn)); };
 $('bMenu').onclick=()=>{ if(!match||!match.online) clearTimeout(aiTimer); openMenu(); };
@@ -1321,7 +1420,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=18;
+const BUILD=19;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
