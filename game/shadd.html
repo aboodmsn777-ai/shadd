@@ -710,7 +710,7 @@ const sfx=(()=>{
   // Recorded sounds (ElevenLabs) with synthesised fallbacks, plus a looping music bed.
   let ctx=null, on=store.get('sound',true), musicOn=store.get('music',true), loading=false, music=null;
   // Sounds live next to the page on GitHub Pages; other hosts (e.g. Vercel) fetch them from there (CORS is open).
-  const AUDIO=/github\.io$|^localhost$|^127\./.test(location.hostname)?'audio/':'https://aboodmsn777-ai.github.io/shadd/game/audio/';
+  const AUDIO=/github\.io$|vercel\.app$|^localhost$|^127\./.test(location.hostname)?'audio/':'https://aboodmsn777-ai.github.io/shadd/game/audio/';
   const bufs={}, FILES=['band','drop','score','turn','tick','timeup','win','vo_turn','vo_win'];
   const ensure=()=>{ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} load(); } if(ctx&&ctx.state==='suspended') ctx.resume(); return ctx; };
   function load(){
@@ -1318,7 +1318,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=16;
+const BUILD=17;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
