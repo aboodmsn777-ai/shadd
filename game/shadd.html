@@ -709,11 +709,13 @@ addEventListener('resize',resize);
 const sfx=(()=>{
   // Recorded sounds (ElevenLabs) with synthesised fallbacks, plus a looping music bed.
   let ctx=null, on=store.get('sound',true), musicOn=store.get('music',true), loading=false, music=null;
+  // Sounds live next to the page on GitHub Pages; other hosts (e.g. Vercel) fetch them from there (CORS is open).
+  const AUDIO=/github\.io$|^localhost$|^127\./.test(location.hostname)?'audio/':'https://aboodmsn777-ai.github.io/shadd/game/audio/';
   const bufs={}, FILES=['band','drop','score','turn','tick','timeup','win','vo_turn','vo_win'];
   const ensure=()=>{ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} load(); } if(ctx&&ctx.state==='suspended') ctx.resume(); return ctx; };
   function load(){
     if(loading||!ctx||!location.protocol.startsWith('http')) return; loading=true;
-    FILES.forEach(n=>fetch('audio/'+n+'.mp3').then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>new Promise((ok,no)=>ctx.decodeAudioData(b,ok,no))).then(buf=>{ bufs[n]=buf; }).catch(()=>{}));
+    FILES.forEach(n=>fetch(AUDIO+n+'.mp3').then(r=>r.ok?r.arrayBuffer():Promise.reject()).then(b=>new Promise((ok,no)=>ctx.decodeAudioData(b,ok,no))).then(buf=>{ bufs[n]=buf; }).catch(()=>{}));
   }
   function sample(n,vol=1,rate=1,delay=0){
     if(!on||!ensure()||!bufs[n]) return false;
@@ -731,7 +733,7 @@ const sfx=(()=>{
   const vary=()=>0.93+Math.random()*0.14;
   function syncMusic(){
     if(!location.protocol.startsWith('http')) return;
-    if(on&&musicOn){ if(!music){ music=new Audio('audio/music.mp3'); music.loop=true; music.volume=0.22; } music.play().catch(()=>{}); }
+    if(on&&musicOn){ if(!music){ music=new Audio(AUDIO+'music.mp3'); music.loop=true; music.volume=0.22; } music.play().catch(()=>{}); }
     else if(music) music.pause();
   }
   document.addEventListener('visibilitychange',()=>{ if(!music) return; if(document.hidden) music.pause(); else syncMusic(); });
@@ -1316,7 +1318,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=15;
+const BUILD=16;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
