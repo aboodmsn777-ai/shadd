@@ -135,7 +135,11 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 .song .sn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .song .del{border:0;background:transparent;color:var(--ink-dim);font-size:20px;line-height:1;padding:2px 6px}
 .songlist .empty{color:var(--ink-dim);font-size:14px;text-align:center;padding:14px}
-.addsong{text-align:center;cursor:pointer;display:block}
+.addsong{text-align:center;cursor:pointer;display:block;width:100%}
+.addwrap{position:relative}
+.addinput{position:absolute;inset:0;width:100%;height:100%;opacity:0.01;cursor:pointer;font-size:40px;z-index:1}
+.addwrap:active .addsong{transform:scale(.97)}
+#songsNote.busy{color:var(--accent)} #songsNote.err{color:#ff8a80}
 /* soft lens vignette pulls the eye to the board */
 .vignette{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse 75% 70% at 50% 47%,transparent 55%,rgba(30,18,8,.22) 100%)}
 .overlay:not([hidden]) .panel{animation:panelIn .42s cubic-bezier(.2,.8,.2,1)}
@@ -313,8 +317,11 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
       </div>
     </div>
     <div class="songlist" id="songList"></div>
-    <label class="primary addsong" for="songFile">+ إضافة أغاني من جوالك</label>
-    <input type="file" id="songFile" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" multiple hidden>
+    <div class="addwrap">
+      <div class="primary addsong" aria-hidden="true">+ إضافة أغاني من جوالك</div>
+      <!-- the real file input sits on top of the button so the finger taps it directly (iOS will not open a picker from script) -->
+      <input type="file" id="songFile" class="addinput" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg" multiple aria-label="إضافة أغاني من جوالك">
+    </div>
     <div class="status" id="songsNote">الأغاني تنحفظ داخل اللعبة على هذا الجهاز فقط، وما تنرفع لأي مكان.</div>
   </div>
 </div>
@@ -1049,24 +1056,26 @@ const Songs=(()=>{
   const store_=mode=>db.transaction('songs',mode).objectStore('songs');
   function openDb(){ return new Promise(res=>{ try{ const r=indexedDB.open('shadd-songs',1); r.onupgradeneeded=()=>r.result.createObjectStore('songs',{keyPath:'id'}); r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); }catch(e){ res(null); } }); }
   async function init(){ db=await openDb(); if(!db) return render(); try{ const q=store_('readonly').getAll(); q.onsuccess=()=>{ list=(q.result||[]).sort((a,b)=>a.added-b.added); render(); }; }catch(e){ render(); } }
-  const isAudio=f=>/^audio\//.test(f.type)||/\.(mp3|m4a|aac|wav|ogg)$/i.test(f.name);
+  const isAudio=f=>/^(audio|video)\//.test(f.type)||/\.(mp3|m4a|mp4|aac|wav|ogg|oga|opus|flac|caf|aif|aiff)$/i.test(f.name)||!f.type;
+  const say=(t,cls)=>{ const el=$('songsNote'); el.textContent=t; el.className='status'+(cls?' '+cls:''); };
   const MIME={mp3:'audio/mpeg',m4a:'audio/mp4',mp4:'audio/mp4',aac:'audio/aac',wav:'audio/wav',ogg:'audio/ogg',oga:'audio/ogg',opus:'audio/ogg',flac:'audio/flac'};
   const extOf=n=>((n.match(/\.([a-z0-9]+)$/i)||[])[1]||'mp3').toLowerCase();
   const typeFor=(f,ext)=>{ const t=f.type||''; return (t && t!=='application/octet-stream' && t!=='audio/mp3') ? t : (MIME[ext]||'audio/mpeg'); };
   async function add(files){
-    const picked=[...files].filter(isAudio);
-    if(!picked.length){ note('اختر ملفات صوت مثل MP3'); return; }
-    note('جاري إضافة '+(picked.length===1?'الأغنية':picked.length+' أغاني')+'…');
+    const all=[...files], picked=all.filter(isAudio);
+    if(!all.length){ say('ما وصل أي ملف · جرّب تختار الأغنية مرة ثانية','err'); return; }
+    if(!picked.length){ say('الملف "'+all[0].name+'" مو ملف صوت ('+(all[0].type||'بدون نوع')+')','err'); return; }
+    say('جاري إضافة '+(picked.length===1?'"'+picked[0].name+'"':picked.length+' أغاني')+'…','busy');
     let n=0;
     for(const f of picked){
       try{
         const ext=extOf(f.name), buf=await f.arrayBuffer();
         const s={id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name:f.name.replace(/\.[^.]+$/,''),ext,blob:new Blob([buf],{type:typeFor(f,ext)}),added:Date.now()+n};
         list.push(s); n++; if(db) try{ store_('readwrite').put(s); }catch(e){}
-      }catch(e){ note('ما قدرت أقرأ الملف "'+f.name+'"'); }
+      }catch(e){ say('ما قدرت أقرأ الملف "'+f.name+'" ('+(e&&e.name||'خطأ')+')','err'); }
     }
     try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
-    if(n && (idx<0||audio.paused)){ idx=list.length-n; audio.removeAttribute('src'); media(); note('انضافت · اضغط ▶ عشان تشتغل'); }
+    if(n){ say((n===1?'انضافت الأغنية':'انضافت '+n+' أغاني')+' · اضغط ▶ عشان تشتغل'); if(idx<0||audio.paused){ idx=list.length-n; audio.removeAttribute('src'); media(); } }
     render();
   }
   // Songs saved by an older version may have an untyped blob: re-type them before making a URL.
@@ -1122,7 +1131,9 @@ const Songs=(()=>{
     box.innerHTML=list.map((s,i)=>`<div class="song${i===idx?' on':''}" data-i="${i}"><span class="sn">${i===idx&&playing?'♪ ':''}${esc(s.name)}</span><button class="del" data-del="${s.id}" aria-label="حذف ${esc(s.name)}">×</button></div>`).join('');
   }
   $('songList').addEventListener('click',e=>{ const d=e.target.closest('[data-del]'); if(d){ e.stopPropagation(); remove(d.dataset.del); return; } const r=e.target.closest('.song'); if(r) play(+r.dataset.i); });
-  $('songFile').addEventListener('change',e=>{ add(e.target.files||[]); e.target.value=''; });
+
+  // Do not touch the input during the tap (that stops the picker opening); clear it only after the files are read.
+  $('songFile').addEventListener('change',e=>{ const inp=e.target, f=[...(inp.files||[])]; Promise.resolve(add(f)).finally(()=>{ try{ inp.value=''; }catch(x){} }); });
   $('sPlay').onclick=toggle; $('sNext').onclick=()=>play(idx+1); $('sPrev').onclick=()=>play(idx-1);
   init();
   return {play,toggle,get count(){return list.length;}};
@@ -1454,7 +1465,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=21;
+const BUILD=23;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
