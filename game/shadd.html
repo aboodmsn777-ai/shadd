@@ -712,6 +712,9 @@ const sfx=(()=>{
   // Sounds live next to the page on GitHub Pages; other hosts (e.g. Vercel) fetch them from there (CORS is open).
   const AUDIO=/github\.io$|vercel\.app$|^localhost$|^127\./.test(location.hostname)?'audio/':'https://aboodmsn777-ai.github.io/shadd/game/audio/';
   const bufs={}, FILES=['band','drop','score','turn','tick','timeup','win','vo_turn','vo_win'];
+  // Mix with the player's own music app (Spotify, Anghami…) instead of pausing it.
+  // Safari 17+ exposes navigator.audioSession; 'ambient' lets our effects play on top of other apps' audio.
+  try{ if(navigator.audioSession) navigator.audioSession.type='ambient'; }catch(e){}
   const ensure=()=>{ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} load(); } if(ctx&&ctx.state==='suspended') ctx.resume(); return ctx; };
   function load(){
     if(loading||!ctx||!location.protocol.startsWith('http')) return; loading=true;
@@ -1318,7 +1321,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=17;
+const BUILD=18;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
