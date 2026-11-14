@@ -1098,7 +1098,8 @@ const Songs=(()=>{
   let db=null, list=[], idx=-1;
   const audio=new Audio(); audio.preload='auto'; audio.volume=0.9;
   const urls={};
-  const session=t=>{ try{ if(navigator.audioSession) navigator.audioSession.type=t; }catch(e){} };
+  // iOS 17+: a 'playback' session blocks the microphone, so use 'play-and-record' while voice chat is on
+  const session=t=>{ try{ if(navigator.audioSession) navigator.audioSession.type=(t==='playback'&&window.__micOn)?'play-and-record':t; }catch(e){} };
   const store_=mode=>db.transaction('songs',mode).objectStore('songs');
   function openDb(){ return new Promise(res=>{ try{ const r=indexedDB.open('shadd-songs',1); r.onupgradeneeded=()=>r.result.createObjectStore('songs',{keyPath:'id'}); r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); }catch(e){ res(null); } }); }
   async function init(){ db=await openDb(); if(!db) return render(); try{ const q=store_('readonly').getAll(); q.onsuccess=()=>{ list=(q.result||[]).sort((a,b)=>a.added-b.added); render(); }; }catch(e){ render(); } }
@@ -1215,8 +1216,21 @@ const Voice=(()=>{
   let stream=null, on=false, call=null, hostNode=null;
   async function enable(){
     if(!Net.role){ note('الصوت يشتغل داخل غرفة أونلاين'); return; }
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ micHelp('هذا المتصفح ما يدعم المايك · افتح اللعبة من سفاري أو كروم'); return; }
+    try{ if(navigator.audioSession) navigator.audioSession.type='play-and-record'; }catch(e){}
     try{ if(!stream) stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
-    catch(e){ note('ما قدرت أفتح المايك · اسمح للمتصفح يستخدم المايك'); return; }
+    catch(e){
+      // retry once with the plainest request (some iPhones reject the processing options)
+      try{ if(!stream) stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+      catch(e2){ const names=[e&&e.name,e2&&e2.name].filter(Boolean), has=x=>names.includes(x), n=names.join(' / ')||'Error';
+        micHelp(has('NotAllowedError')||has('SecurityError')
+          ? 'المايك مرفوض · في سفاري اضغط «aA» يسار الرابط ← إعدادات موقع الويب ← الميكروفون ← سماح، وفي الإعدادات ← سفاري ← الميكروفون ← سماح، ثم سكّر اللعبة وافتحها من جديد'
+          : has('NotFoundError') ? 'ما لقيت مايك في الجهاز'
+          : has('NotReadableError')||has('AbortError') ? 'المايك مشغول بتطبيق ثاني (مكالمة أو تسجيل) · سكّره وجرّب'
+          : 'ما قدرت أفتح المايك ('+n+')');
+        return; }
+    }
+    window.__micOn=true;
     stream.getAudioTracks().forEach(t=>t.enabled=true); on=true; link(); render(); note('🎙️ المايك شغال · الكل يسمعك');
   }
   function link(){
@@ -1227,7 +1241,9 @@ const Voice=(()=>{
     if(Net.role==='host' && !hostNode){ const ctx=RoomAudio.ensure(); if(ctx){ try{ hostNode=ctx.createMediaStreamSource(stream); RoomAudio.addSource(hostNode,'host',false); }catch(e){} } }
   }
   function disable(){ if(stream) stream.getAudioTracks().forEach(t=>t.enabled=false); on=false; render(); }
-  function reset(){ try{ call&&call.close(); }catch(e){} call=null; if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null; hostNode=null; on=false; render(); }
+  // long help message shown in the chat sheet so it stays readable
+  function micHelp(t){ note(t.length>60?'ما قدرت أفتح المايك · التفاصيل في الدردشة':t); if(t.length>60){ Chat.show({name:'المايك',color:'#ff8a80',text:t}); $('chat').hidden=false; } }
+  function reset(){ try{ call&&call.close(); }catch(e){} call=null; if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null; hostNode=null; on=false; window.__micOn=false; render(); }
   function render(){ const b=$('bMic'); b.setAttribute('aria-pressed',String(on)); b.classList.toggle('live',on); b.title=on?'المايك شغال':'المايك مسكّر'; }
   $('bMic').onclick=()=>{ sfx.unlock(); on?disable():enable(); };
   return {reset,relink:()=>{ call=null; if(on) link(); },get on(){ return on; }};
@@ -1630,7 +1646,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=25;
+const BUILD=26;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
