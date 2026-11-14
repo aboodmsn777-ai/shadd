@@ -116,6 +116,23 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 .rank{display:flex;flex-direction:column;gap:6px}
 .rank div{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:#ffffff08}
 .rank .sc{direction:ltr;unicode-bidi:isolate;margin-inline-start:auto;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+/* room tools: chat + mic, floating on the left above the bottom bar */
+.roomtools{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:6}
+.tool.rt{width:46px;height:46px;border-radius:50%;position:relative}
+.tool.rt.live{background:#c0392b;border-color:#ff8a80}
+.tool.rt.live svg{stroke:#fff}
+.badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#e5484d;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.chatpop{position:fixed;left:50%;transform:translateX(-50%);top:calc(110px + env(safe-area-inset-top,0px));max-width:calc(100% - 32px);background:var(--panel);border:1px solid var(--panel-line);border-radius:14px;padding:8px 14px;font-size:14px;z-index:7;box-shadow:0 8px 24px #0006;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--panel);border-top:1px solid var(--panel-line);border-radius:20px 20px 0 0;box-shadow:0 -12px 40px #0008;padding:14px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:10px;max-height:62vh}
+.chat-head{display:flex;align-items:center;justify-content:space-between}.chat-head b{font-family:var(--display);font-weight:400;font-size:26px}
+.chatlist{overflow:auto;display:flex;flex-direction:column;gap:6px;min-height:80px;max-height:34vh}
+.msg{background:#ffffff0d;border-radius:12px;padding:7px 10px;font-size:14px;line-height:1.5;max-width:85%;align-self:flex-start;overflow-wrap:anywhere}
+.msg.me{align-self:flex-end;background:#f2c2301f}
+.msg b{font-weight:700;margin-inline-end:6px}
+.chatquick{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chatquick button{flex:none;border:1px solid var(--panel-line);background:#ffffff0d;border-radius:999px;padding:6px 12px;font-size:14px}
+.chatform{display:flex;gap:8px}.chatform .inp{flex:1;font-size:16px}
+.sendb{font-size:18px;padding:10px 16px;flex:none}
 /* tap-to-listen when the browser blocks the host's music */
 .listen{position:fixed;left:50%;transform:translateX(-50%);top:calc(110px + env(safe-area-inset-top,0px));z-index:7;border:0;border-radius:999px;padding:10px 18px;background:var(--accent);color:#1d1606;font-weight:700;box-shadow:0 8px 24px #0006}
 /* my-songs panel */
@@ -195,6 +212,17 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
 <div class="vignette" aria-hidden="true"></div>
 <div class="edgeglow" id="edgeGlow" aria-hidden="true"></div>
 <div class="turnfx" id="turnFx" aria-hidden="true"><i class="disc"></i><i></i><i></i><b id="turnFxTxt"></b></div>
+<div class="roomtools" id="roomTools" hidden>
+  <button class="tool rt" id="bChat" title="الدردشة" aria-label="الدردشة"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg><span class="badge" id="chatBadge" hidden>0</span></button>
+  <button class="tool rt" id="bMic" title="المايك مسكّر" aria-label="المايك" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+</div>
+<div class="chatpop" id="chatPop" hidden></div>
+<div class="chat" id="chat" hidden>
+  <div class="chat-head"><b>الدردشة</b><button class="ghost slim" id="chatClose">إغلاق</button></div>
+  <div class="chatlist" id="chatList" aria-live="polite"></div>
+  <div class="chatquick" id="chatQuick"><button>😂</button><button>👏</button><button>🔥</button><button>يا سلام</button><button>حظ أوفر</button><button>دورك يالحبيب</button></div>
+  <form class="chatform" id="chatForm"><input class="inp" id="chatInput" maxlength="200" placeholder="اكتب رسالة…" autocomplete="off"><button class="primary sendb" type="submit">إرسال</button></form>
+</div>
 <button class="listen" id="listenBtn" hidden>🔊 اضغط عشان تسمع أغاني المضيف</button>
 <div class="toast" id="toast"></div>
 <div class="note" id="note"></div>
@@ -252,7 +280,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--ink)}
           </div>
           <div class="qr" id="qr" aria-label="رمز QR للانضمام"></div>
         </div>
-        <button class="ghost" id="bShare">مشاركة رابط الدعوة</button>
+        <div class="row2"><button class="ghost" id="bShare">مشاركة رابط الدعوة</button><button class="ghost" id="bChatLobby">💬 الدردشة</button></div>
         <div>
           <div class="lbl">اللاعبون</div>
           <div class="players" id="seatRows"></div>
@@ -1050,6 +1078,21 @@ function drawGhost(m,color){
 $('bView').onclick=()=>{ viewMode=(viewMode+1)%VIEWS.length; if(reduceMotion){ camTilt=VIEWS[viewMode]; applyCamera(); } else camTarget=VIEWS[viewMode]; };
 const sndBtn=$('bSound'); sndBtn.setAttribute('aria-pressed',String(sfx.on));
 sndBtn.onclick=()=>{ sfx.on=!sfx.on; sndBtn.setAttribute('aria-pressed',String(sfx.on)); };
+// ---------- room audio hub (host): mixes music + every mic; each guest gets everything except their own voice ----------
+const RoomAudio=(()=>{
+  let ctx=null; const outs=new Map(), sources=[];
+  function ensure(){ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; } } if(ctx.state==='suspended') ctx.resume(); return ctx; }
+  function outFor(pid){
+    if(!ensure()||!ctx.createMediaStreamDestination) return null;
+    let d=outs.get(pid); if(!d){ d=ctx.createMediaStreamDestination(); outs.set(pid,d); sources.forEach(x=>{ if(x.owner!==pid) x.node.connect(d); }); }
+    return d;
+  }
+  function addSource(node,owner,hearHere){ sources.push({node,owner}); outs.forEach((d,pid)=>{ if(pid!==owner) node.connect(d); }); if(hearHere) node.connect(ctx.destination); }
+  function removeOwner(owner){ for(let i=sources.length-1;i>=0;i--) if(sources[i].owner===owner){ try{ sources[i].node.disconnect(); }catch(e){} sources.splice(i,1); } }
+  function dropOut(pid){ const d=outs.get(pid); if(!d) return; outs.delete(pid); sources.forEach(x=>{ try{ x.node.disconnect(d); }catch(e){} }); }
+  return {ensure,outFor,addSource,removeOwner,dropOut,get ctx(){ return ctx; }};
+})();
+
 // ---------- my songs: MP3s picked from the phone, kept in this browser (IndexedDB) ----------
 const Songs=(()=>{
   let db=null, list=[], idx=-1;
@@ -1087,15 +1130,10 @@ const Songs=(()=>{
   const triedData={};
   // The player goes through Web Audio so the host can stream it live to everyone in an online room.
   // Built inside a tap (iOS only starts audio contexts from a gesture).
-  let actx=null, srcNode=null, streamDest=null;
+  let srcNode=null;
   function graph(){
-    if(srcNode){ if(actx.state==='suspended') actx.resume(); return; }
-    try{
-      actx=new (window.AudioContext||window.webkitAudioContext)();
-      srcNode=actx.createMediaElementSource(audio); srcNode.connect(actx.destination);
-      if(actx.createMediaStreamDestination){ streamDest=actx.createMediaStreamDestination(); srcNode.connect(streamDest); }
-      if(actx.state==='suspended') actx.resume();
-    }catch(e){ srcNode=null; streamDest=null; }
+    const ctx=RoomAudio.ensure(); if(!ctx||srcNode) return;
+    try{ srcNode=ctx.createMediaElementSource(audio); RoomAudio.addSource(srcNode,'music',true); }catch(e){ srcNode=null; }
   }
   function shared(){ try{ Net.shareMusic(); }catch(e){} }
   function play(i){
@@ -1153,7 +1191,7 @@ const Songs=(()=>{
   $('sPlay').onclick=toggle; $('sNext').onclick=()=>play(idx+1); $('sPrev').onclick=()=>play(idx-1);
   init();
   return {play,toggle,get count(){return list.length;},
-    stream:()=>streamDest?streamDest.stream:null,
+    stream:()=>srcNode?true:null,
     get playing(){ return idx>=0&&!audio.paused; }, get name(){ return idx>=0?list[idx].name:''; }};
 })();
 const openSongs=()=>{ sfx.unlock(); $('songs').hidden=false; };
@@ -1172,6 +1210,54 @@ const HostMusic=(()=>{
   function stop(){ try{ el.pause(); el.srcObject=null; }catch(e){} btn.hidden=true; sfx.bed(true); }
   return {attach,stop,mute(m){ el.muted=m; },get el(){ return el; }};
 })();
+// ---------- voice chat: your mic goes to the host, who mixes it for everyone else ----------
+const Voice=(()=>{
+  let stream=null, on=false, call=null, hostNode=null;
+  async function enable(){
+    if(!Net.role){ note('الصوت يشتغل داخل غرفة أونلاين'); return; }
+    try{ if(!stream) stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }
+    catch(e){ note('ما قدرت أفتح المايك · اسمح للمتصفح يستخدم المايك'); return; }
+    stream.getAudioTracks().forEach(t=>t.enabled=true); on=true; link(); render(); note('🎙️ المايك شغال · الكل يسمعك');
+  }
+  function link(){
+    if(!stream) return;
+    if(Net.role==='guest' && !call && Net.peer && Net.hostOpen() && typeof Net.peer.call==='function'){
+      try{ call=Net.peer.call(ROOM_PREFIX+Net.code,stream,{metadata:{kind:'voice'}}); call.on('close',()=>{ call=null; }); call.on('error',()=>{ call=null; }); }catch(e){ call=null; }
+    }
+    if(Net.role==='host' && !hostNode){ const ctx=RoomAudio.ensure(); if(ctx){ try{ hostNode=ctx.createMediaStreamSource(stream); RoomAudio.addSource(hostNode,'host',false); }catch(e){} } }
+  }
+  function disable(){ if(stream) stream.getAudioTracks().forEach(t=>t.enabled=false); on=false; render(); }
+  function reset(){ try{ call&&call.close(); }catch(e){} call=null; if(stream) stream.getTracks().forEach(t=>t.stop()); stream=null; hostNode=null; on=false; render(); }
+  function render(){ const b=$('bMic'); b.setAttribute('aria-pressed',String(on)); b.classList.toggle('live',on); b.title=on?'المايك شغال':'المايك مسكّر'; }
+  $('bMic').onclick=()=>{ sfx.unlock(); on?disable():enable(); };
+  return {reset,relink:()=>{ call=null; if(on) link(); },get on(){ return on; }};
+})();
+
+// ---------- text chat (host relays) ----------
+const Chat=(()=>{
+  const box=$('chatList'); let unread=0;
+  function show(m){
+    const row=document.createElement('div'); row.className='msg'+(m.me?' me':'');
+    row.innerHTML=`<b style="color:${esc(m.color||'#fff')}">${esc(m.name||'')}</b><span>${esc(m.text)}</span>`;
+    box.appendChild(row); while(box.children.length>80) box.firstChild.remove(); box.scrollTop=box.scrollHeight;
+    if($('chat').hidden && !m.me){ unread++; badge(); pop(m); sfx.pick(); }
+  }
+  function pop(m){ const p=$('chatPop'); p.innerHTML=`<b style="color:${esc(m.color||'#fff')}">${esc(m.name)}</b> ${esc(m.text)}`; p.hidden=false; clearTimeout(pop.t); pop.t=setTimeout(()=>p.hidden=true,3500); }
+  function badge(){ const b=$('chatBadge'); b.textContent=unread>9?'9+':unread; b.hidden=!unread; }
+  function send(text){
+    text=String(text||'').replace(/\s+/g,' ').trim().slice(0,200); if(!text||!Net.role) return;
+    if(Net.role==='host') Net.chatOut(Net.myId,text); else Net.send({t:'chat',text});
+  }
+  function open(){ $('chat').hidden=false; unread=0; badge(); $('chatPop').hidden=true; box.scrollTop=box.scrollHeight; }
+  $('bChat').onclick=open; $('bChatLobby').onclick=open;
+  $('chatClose').onclick=()=>{ $('chat').hidden=true; };
+  $('chatForm').addEventListener('submit',e=>{ e.preventDefault(); const i=$('chatInput'); send(i.value); i.value=''; });
+  document.querySelectorAll('#chatQuick button').forEach(b=>b.onclick=()=>send(b.textContent));
+  $('chatPop').onclick=open;
+  return {show,clear(){ box.innerHTML=''; unread=0; badge(); }};
+})();
+function roomTools(){ const on=!!Net.role; $('roomTools').hidden=!on; if(!on){ $('chat').hidden=true; $('chatPop').hidden=true; } }
+
 const musBtn=$('bMusic'); musBtn.setAttribute('aria-pressed',String(sfx.musicOn));
 musBtn.onclick=()=>{ sfx.musicOn=!sfx.musicOn; musBtn.setAttribute('aria-pressed',String(sfx.musicOn)); HostMusic.mute(!sfx.musicOn); };
 $('bMenu').onclick=()=>{ if(!match||!match.online) clearTimeout(aiTimer); openMenu(); };
@@ -1244,6 +1330,7 @@ const Net={
 
   // ----- host -----
   async create(){
+    RoomAudio.ensure(); // inside the tap, so the room's audio can run on iPhone
     setStatus('جاري إنشاء الغرفة…'); this.leaving=false;
     let lastErr=null;
     for(let i=0;i<4 && !this.peer;i++){
@@ -1256,16 +1343,36 @@ const Net={
       {kind:'human',owner:this.myId,name:myName(),color:me.color,host:true},
       {kind:'open',color:-1}]};
     this.peer.on('connection',c=>this.hostConn(c));
+    // guests' microphones arrive as calls to the host
+    this.voiceIn=new Map();
+    if(typeof this.peer.on==='function') this.peer.on('call',call=>{
+      if(this.role!=='host') return; const pid=call.peer;
+      try{ call.answer(); }catch(e){ return; }
+      this.voiceIn.set(pid,call);
+      call.on('stream',st=>{
+        const ctx=RoomAudio.ensure(); if(!ctx) return;
+        const keep=new Audio(); keep.muted=true; keep.srcObject=st; keep.play().catch(()=>{}); call._keep=keep; // Chrome only feeds WebRTC audio to Web Audio while an element plays it
+        RoomAudio.removeOwner(pid); try{ RoomAudio.addSource(ctx.createMediaStreamSource(st),pid,true); }catch(e){}
+      });
+      call.on('close',()=>{ RoomAudio.removeOwner(pid); this.voiceIn.delete(pid); });
+    });
     clearInterval(this.pingT); this.pingT=setInterval(()=>this.hostPing(),4000);
     setStatus(''); renderOnline();
   },
   // Stream the host's own songs to a guest (PeerJS media call). The stream exists once the host has played a song.
+  // Each guest gets one live audio call carrying their personal mix (songs + everyone else's mic).
   callMusic(pid){
-    const st=Songs.stream();
-    if(!st||this.role!=='host'||!this.peer||typeof this.peer.call!=='function'||this.calls.has(pid)) return;
-    try{ const call=this.peer.call(pid,st); this.calls.set(pid,call);
+    if(this.role!=='host'||!this.peer||typeof this.peer.call!=='function'||this.calls.has(pid)) return;
+    const d=RoomAudio.outFor(pid); if(!d) return;
+    try{ const call=this.peer.call(pid,d.stream,{metadata:{kind:'room'}}); this.calls.set(pid,call);
       call.on('close',()=>{ if(this.calls.get(pid)===call) this.calls.delete(pid); });
       call.on('error',()=>{ if(this.calls.get(pid)===call) this.calls.delete(pid); }); }catch(e){}
+  },
+  chatOut(pid,text){
+    text=String(text).replace(/\s+/g,' ').trim().slice(0,200); if(!text||!this.room) return;
+    const seat=this.room.seats.find(x=>x.owner===pid); if(!seat) return;
+    const m={t:'chat',from:pid,name:seat.name||'لاعب',color:PALETTE[Math.max(0,seat.color)].css,text};
+    this.broadcast(m); Chat.show({...m,me:pid===this.myId});
   },
   shareMusic(){
     if(this.role!=='host') return;
@@ -1295,6 +1402,8 @@ const Net={
       this.callMusic(c.peer); if(Songs.playing) c.send({t:'song',playing:true,name:Songs.name});
       if(R.started && st){ c.send({t:'state',room:this.pub(),history:st.history}); this.broadcast({t:'room',room:this.pub()}); if(wasAway) note(seat.name+' رجع للمباراة'); renderHud(); }
       else { this.broadcast({t:'lobby',room:this.pub()}); renderOnline(); sfx.ding(); }
+    } else if(d.t==='chat'){
+      if(typeof d.text==='string') this.chatOut(c.peer,d.text);
     } else if(d.t==='move'){
       if(!R.started||!st||st.over) return;
       const s=R.seats.findIndex(x=>x.owner===c.peer);
@@ -1308,6 +1417,8 @@ const Net={
     if(this.conns.get(pid)!==c) return;
     this.conns.delete(pid); this.seen.delete(pid);
     const mc=this.calls.get(pid); if(mc){ try{ mc.close(); }catch(e){} this.calls.delete(pid); }
+    RoomAudio.dropOut(pid); RoomAudio.removeOwner(pid);
+    const vc=this.voiceIn&&this.voiceIn.get(pid); if(vc){ try{ vc.close(); }catch(e){} this.voiceIn.delete(pid); }
     const R=this.room; if(!R) return;
     const seat=R.seats.find(x=>x.owner===pid); if(!seat) return;
     if(R.started){
@@ -1360,7 +1471,7 @@ const Net={
     const to=setTimeout(()=>{ if(ok||this.leaving) return; try{ c.close(); }catch(e){}
       if(this.room) this.lost('ما قدرنا نرجع للغرفة');
       else { setStatus('ما وصلنا للغرفة. تأكد من الكود وإن المضيف فاتح اللعبة.',true); this.leave(true); } },15000);
-    c.on('open',()=>{ ok=true; clearTimeout(to); this.host=c; this.retries=0; this.lastHost=Date.now(); $('netBanner').hidden=true; c.send({t:'hello',name:myName(),color:me.color,token:this.token}); });
+    c.on('open',()=>{ ok=true; clearTimeout(to); this.host=c; this.retries=0; setTimeout(()=>Voice.relink(),300); this.lastHost=Date.now(); $('netBanner').hidden=true; c.send({t:'hello',name:myName(),color:me.color,token:this.token}); });
     c.on('data',d=>this.guestData(c,d));
     c.on('close',()=>{ if(this.host===c){ this.host=null; if(!this.leaving) this.lost('انقطع الاتصال بالمضيف'); } });
     clearInterval(this.pingT);
@@ -1370,6 +1481,7 @@ const Net={
     if(!d||typeof d!=='object'||c!==this.host) return;
     this.lastHost=Date.now();
     if(d.t==='ping'){ this.send({t:'pong'}); return; }
+    if(d.t==='chat'){ Chat.show({name:d.name,color:d.color,text:String(d.text||'').slice(0,200),me:d.from===this.myId}); return; }
     if(d.t==='song'){ if(d.playing){ note('🎵 المضيف يشغّل: '+String(d.name||'').slice(0,60)); sfx.bed(false); } else sfx.bed(true); return; }
     if(d.t==='lobby'){ this.room=d.room; setStatus(''); renderOnline(); return; }
     if(d.t==='start'||d.t==='state'){ this.room=d.room; startGame(roomMatch(d.room), d.t==='state'?d.history:[]); return; }
@@ -1396,7 +1508,8 @@ const Net={
   leave(silent){
     const wasOnline=match&&match.online;
     this.leaving=true; clearInterval(this.pingT);
-    this.calls.forEach(c=>{ try{ c.close(); }catch(e){} }); this.calls=new Map(); HostMusic.stop();
+    this.calls.forEach(c=>{ try{ c.close(); }catch(e){} }); this.calls=new Map(); HostMusic.stop(); Voice.reset(); Chat.clear();
+    if(this.voiceIn){ this.voiceIn.forEach(c=>{ try{ c.close(); }catch(e){} }); this.voiceIn=new Map(); }
     try{ if(this.role==='host') this.broadcast({t:'closed'}); else this.send({t:'bye'}); }catch(e){}
     const p=this.peer; setTimeout(()=>{ try{ p&&p.destroy(); }catch(e){} },200);
     this.peer=null; this.role=null; this.code=null; this.host=null; this.room=null; this.conns=new Map(); this.seen=new Map();
@@ -1452,6 +1565,7 @@ function renderMenu(){
   renderOnline();
 }
 function renderOnline(){
+  roomTools();
   const inRoom=!!(Net.room);
   $('onIntro').hidden=inRoom; $('onLobby').hidden=!inRoom;
   if(document.activeElement!==$('myName')) $('myName').value=me.name||'';
@@ -1516,7 +1630,7 @@ function readJoinHash(){
 }
 addEventListener('hashchange',()=>{ if(!Net.role && readJoinHash()) openMenu(); });
 // ---------- auto-update: phones keep old copies cached, so check for a newer build and reload once ----------
-const BUILD=24;
+const BUILD=25;
 try{ if(location.protocol.startsWith('http') && !useBC) fetch('version.json?t='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.json():null).then(j=>{
   if(!j||!(j.v>BUILD)) return; const u=new URL(location.href);
   if(u.searchParams.get('v')===String(j.v)) return; // already tried this version
